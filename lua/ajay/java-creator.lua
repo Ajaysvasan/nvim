@@ -1,7 +1,8 @@
 -- java-creator.lua
 -- IntelliJ-style Java file creation with floating GUI
+-- Flow: pick directory -> pick type -> name it -> create
 -- Drop in: lua/ajay/java-creator.lua
--- Add to init.lua: require("ajay.java-creator")
+-- Require in init.lua: require("ajay.java-creator")
 
 local M = {}
 
@@ -9,12 +10,10 @@ local M = {}
 --  TEMPLATES
 -- ─────────────────────────────────────────────────────────────
 
----@param pkg string  e.g. "com.example.service"
----@param name string e.g. "UserService"
 local templates = {
-  Class = function(pkg, name)
-    return string.format(
-      [[package %s;
+	Class = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public class %s {
 
@@ -22,28 +21,28 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name
+		)
+	end,
 
-  Interface = function(pkg, name)
-    return string.format(
-      [[package %s;
+	Interface = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public interface %s {
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  Enum = function(pkg, name)
-    return string.format(
-      [[package %s;
+	Enum = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public enum %s {
 
@@ -53,15 +52,15 @@ public enum %s {
     }
 }
 ]],
-      pkg,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name
+		)
+	end,
 
-  ["Abstract Class"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Abstract Class"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public abstract class %s {
 
@@ -69,28 +68,28 @@ public abstract class %s {
     }
 }
 ]],
-      pkg,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name
+		)
+	end,
 
-  ["Record"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Record"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public record %s() {
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  Annotation = function(pkg, name)
-    return string.format(
-      [[package %s;
+	Annotation = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import java.lang.annotation.*;
 
@@ -100,14 +99,14 @@ public @interface %s {
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  ["Spring @Service"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @Service"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.stereotype.Service;
 
@@ -118,15 +117,15 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name
+		)
+	end,
 
-  ["Spring @Repository"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @Repository"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -136,14 +135,14 @@ public interface %s extends JpaRepository<Object, Long> {
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  ["Spring @Controller"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @Controller"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -156,16 +155,16 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name:lower(),
-      name,
-      name
-    )
-  end,
+			pkg,
+			name:lower(),
+			name,
+			name
+		)
+	end,
 
-  ["Spring @RestController"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @RestController"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -177,16 +176,16 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name:lower():gsub("controller", ""),
-      name,
-      name
-    )
-  end,
+			pkg,
+			name:lower():gsub("controller", ""),
+			name,
+			name
+		)
+	end,
 
-  ["Spring @Component"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @Component"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.stereotype.Component;
 
@@ -197,15 +196,15 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name
+		)
+	end,
 
-  ["Spring @Configuration"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Spring @Configuration"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
@@ -215,14 +214,14 @@ public class %s {
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  ["JPA @Entity"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["JPA @Entity"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import jakarta.persistence.*;
 
@@ -246,16 +245,16 @@ public class %s {
     }
 }
 ]],
-      pkg,
-      name:lower(),
-      name,
-      name
-    )
-  end,
+			pkg,
+			name:lower(),
+			name,
+			name
+		)
+	end,
 
-  ["DTO / Record"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["DTO / Record"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public record %s(
     // Add fields here
@@ -263,14 +262,14 @@ public record %s(
 
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 
-  ["Exception"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Exception"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 public class %s extends RuntimeException {
 
@@ -283,16 +282,16 @@ public class %s extends RuntimeException {
     }
 }
 ]],
-      pkg,
-      name,
-      name,
-      name
-    )
-  end,
+			pkg,
+			name,
+			name,
+			name
+		)
+	end,
 
-  ["Test (JUnit 5)"] = function(pkg, name)
-    return string.format(
-      [[package %s;
+	["Test (JUnit 5)"] = function(pkg, name)
+		return string.format(
+			[[package %s;
 
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -309,493 +308,774 @@ class %s {
     }
 }
 ]],
-      pkg,
-      name
-    )
-  end,
+			pkg,
+			name
+		)
+	end,
 }
 
--- Ordered list for display
 local TEMPLATE_KEYS = {
-  "Class",
-  "Interface",
-  "Enum",
-  "Abstract Class",
-  "Record",
-  "Annotation",
-  "Spring @Service",
-  "Spring @Repository",
-  "Spring @RestController",
-  "Spring @Controller",
-  "Spring @Component",
-  "Spring @Configuration",
-  "JPA @Entity",
-  "DTO / Record",
-  "Exception",
-  "Test (JUnit 5)",
+	"Class",
+	"Interface",
+	"Enum",
+	"Abstract Class",
+	"Record",
+	"Annotation",
+	"Spring @Service",
+	"Spring @Repository",
+	"Spring @RestController",
+	"Spring @Controller",
+	"Spring @Component",
+	"Spring @Configuration",
+	"JPA @Entity",
+	"DTO / Record",
+	"Exception",
+	"Test (JUnit 5)",
 }
 
 -- ─────────────────────────────────────────────────────────────
 --  HELPERS
 -- ─────────────────────────────────────────────────────────────
 
---- Derive Java package from the file path.
---- Scans upward for src/main/java or src/test/java.
----@param dir string absolute directory path
----@return string package name
 local function infer_package(dir)
-  local path = dir
-  local markers = { "src/main/java", "src/test/java" }
-  for _, marker in ipairs(markers) do
-    local idx = path:find(marker, 1, true)
-    if idx then
-      local after = path:sub(idx + #marker + 1)
-      return after:gsub("/", "."):gsub("^%.", ""):gsub("%.$", "")
-    end
-  end
-  -- fallback: use last two path segments
-  local parts = {}
-  for seg in path:gmatch("[^/]+") do
-    table.insert(parts, seg)
-  end
-  if #parts >= 2 then
-    return parts[#parts - 1] .. "." .. parts[#parts]
-  end
-  return "com.example"
+	local markers = { "src/main/java", "src/test/java" }
+	for _, marker in ipairs(markers) do
+		local idx = dir:find(marker, 1, true)
+		if idx then
+			local after = dir:sub(idx + #marker + 1)
+			return (after:gsub("/", "."):gsub("^%.", ""):gsub("%.$", ""))
+		end
+	end
+	local parts = {}
+	for seg in dir:gmatch("[^/]+") do
+		table.insert(parts, seg)
+	end
+	if #parts >= 2 then
+		return parts[#parts - 1] .. "." .. parts[#parts]
+	end
+	return "com.example"
 end
 
---- Return the directory of the currently focused buffer/tree node.
----@return string absolute directory
-local function get_target_dir()
-  -- Try to get from neo-tree if it's open
-  local ok, nt_api = pcall(require, "neo-tree.sources.filesystem.lib.file_items")
-  if ok then
-    -- Attempt to get neo-tree's current node
-    local manager_ok, manager = pcall(require, "neo-tree.sources.manager")
-    if manager_ok then
-      local state = manager.get_state("filesystem")
-      if state and state.tree then
-        local node = state.tree:get_node()
-        if node then
-          local path = node.path or node:get_id()
-          local stat = vim.loop.fs_stat(path)
-          if stat and stat.type == "directory" then
-            return path
-          elseif stat then
-            return vim.fn.fnamemodify(path, ":h")
-          end
-        end
-      end
-    end
-  end
+--- Best-effort starting directory: neo-tree node, else current buffer dir, else cwd.
+--- Wrapped entirely in pcall so a neo-tree API mismatch can NEVER abort the GUI.
+local function get_initial_dir()
+	local ok, dir = pcall(function()
+		local manager_ok, manager = pcall(require, "neo-tree.sources.manager")
+		if manager_ok then
+			local nt_state = manager.get_state("filesystem")
+			if nt_state and nt_state.tree then
+				local node = nt_state.tree:get_node()
+				if node then
+					local path = node.path or (node.get_id and node:get_id())
+					if path then
+						local stat = vim.loop.fs_stat(path)
+						if stat then
+							return stat.type == "directory" and path or vim.fn.fnamemodify(path, ":h")
+						end
+					end
+				end
+			end
+		end
+		local buf_path = vim.api.nvim_buf_get_name(0)
+		if buf_path ~= "" then
+			local stat = vim.loop.fs_stat(buf_path)
+			if stat and stat.type == "file" then
+				return vim.fn.fnamemodify(buf_path, ":h")
+			end
+		end
+		return vim.fn.getcwd()
+	end)
+	if ok and dir and dir ~= "" then
+		return dir
+	end
+	return vim.fn.getcwd()
+end
 
-  -- Fallback: directory of the current buffer
-  local buf_path = vim.api.nvim_buf_get_name(0)
-  if buf_path ~= "" then
-    return vim.fn.fnamemodify(buf_path, ":h")
-  end
+--- List subdirectories of `dir` (sorted, dotfiles excluded except "..").
+local function list_subdirs(dir)
+	local entries = {}
+	local fd = vim.loop.fs_scandir(dir)
+	if fd then
+		while true do
+			local name, ftype = vim.loop.fs_scandir_next(fd)
+			if not name then
+				break
+			end
+			if ftype == "directory" and not name:match("^%.") then
+				table.insert(entries, name)
+			end
+		end
+	end
+	table.sort(entries, function(a, b)
+		return a:lower() < b:lower()
+	end)
+	return entries
+end
 
-  -- Last resort: cwd
-  return vim.fn.getcwd()
+local function path_join(a, b)
+	if a:sub(-1) == "/" then
+		return a .. b
+	end
+	return a .. "/" .. b
+end
+
+local function path_parent(dir)
+	local trimmed = dir:gsub("/+$", "")
+	local parent = vim.fn.fnamemodify(trimmed, ":h")
+	if parent == "" then
+		return "/"
+	end
+	return parent
 end
 
 -- ─────────────────────────────────────────────────────────────
---  UI STATE
+--  SHARED FLOAT UTILITIES
 -- ─────────────────────────────────────────────────────────────
-
-local state = {
-  win = nil,
-  buf = nil,
-  -- sub-windows
-  type_win = nil,
-  type_buf = nil,
-  name_win = nil,
-  name_buf = nil,
-  pkg_win = nil,
-  pkg_buf = nil,
-  -- current values
-  selected_type = 1,
-  class_name = "",
-  package = "",
-  target_dir = "",
-}
-
--- ─────────────────────────────────────────────────────────────
---  WINDOW CREATION
--- ─────────────────────────────────────────────────────────────
-
-local function close_all()
-  local wins = { state.win, state.type_win, state.name_win, state.pkg_win }
-  for _, w in ipairs(wins) do
-    if w and vim.api.nvim_win_is_valid(w) then
-      vim.api.nvim_win_close(w, true)
-    end
-  end
-  state.win = nil
-  state.type_win = nil
-  state.name_win = nil
-  state.pkg_win = nil
-end
 
 local function create_buf(lines, modifiable)
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines or {})
-  vim.api.nvim_set_option_value("buftype", "nofile", { buf = buf })
-  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-  vim.api.nvim_set_option_value("modifiable", modifiable or false, { buf = buf })
-  return buf
+	local buf = vim.api.nvim_create_buf(false, true)
+	if lines then
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	end
+	vim.api.nvim_set_option_value("buftype", "nofile", { buf = buf })
+	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+	vim.api.nvim_set_option_value("modifiable", modifiable or false, { buf = buf })
+	return buf
 end
 
 local function open_float(buf, opts)
-  local win = vim.api.nvim_open_win(buf, false, opts)
-  vim.api.nvim_set_option_value("winhl", "Normal:NormalFloat,FloatBorder:FloatBorder", { win = win })
-  vim.api.nvim_set_option_value("cursorline", true, { win = win })
-  vim.api.nvim_set_option_value("number", false, { win = win })
-  vim.api.nvim_set_option_value("signcolumn", "no", { win = win })
-  return win
+	local ok, win = pcall(vim.api.nvim_open_win, buf, false, opts)
+	if not ok then
+		vim.notify("java-creator: failed to open float: " .. tostring(win), vim.log.levels.ERROR)
+		return nil
+	end
+	pcall(vim.api.nvim_set_option_value, "winhl", "Normal:NormalFloat,FloatBorder:FloatBorder", { win = win })
+	pcall(vim.api.nvim_set_option_value, "number", false, { win = win })
+	pcall(vim.api.nvim_set_option_value, "signcolumn", "no", { win = win })
+	return win
 end
 
--- ─────────────────────────────────────────────────────────────
---  RENDER
--- ─────────────────────────────────────────────────────────────
+local function safe_highlight(buf, hl, line, col_start, col_end)
+	if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+		return
+	end
+	local count = vim.api.nvim_buf_line_count(buf)
+	if line < 0 or line >= count then
+		return
+	end
+	pcall(vim.api.nvim_buf_add_highlight, buf, -1, hl, line, col_start, col_end)
+end
 
---- Re-draw the type list buffer to show selection highlight
+local function map(buf, mode, lhs, fn)
+	pcall(vim.keymap.set, mode, lhs, fn, { buffer = buf, silent = true, nowait = true })
+end
+
+local function screen_dims()
+	local ui = vim.api.nvim_list_uis()[1]
+	if ui then
+		return ui.width, ui.height
+	end
+	return vim.o.columns, vim.o.lines
+end
+
+-- ═════════════════════════════════════════════════════════════
+--  STATE (single shared table for both stages)
+-- ═════════════════════════════════════════════════════════════
+
+local state = {
+	-- directory picker
+	dir_win = nil,
+	dir_buf = nil,
+	path_win = nil,
+	path_buf = nil,
+	help_win = nil,
+	help_buf = nil,
+	current_dir = nil,
+	entries = {},
+	selected_entry = 1,
+
+	-- type/name picker
+	main_win = nil,
+	main_buf = nil,
+	type_win = nil,
+	type_buf = nil,
+	name_win = nil,
+	name_buf = nil,
+	pkg_win = nil,
+	pkg_buf = nil,
+	info_win = nil,
+	selected_type = 1,
+	package = "",
+	target_dir = "",
+
+	owned_wins = {},
+	stage = nil, -- "dir" | "type"
+}
+
+local function close_all()
+	pcall(vim.api.nvim_del_augroup_by_name, "JavaCreatorClose")
+	state.owned_wins = {}
+	local wins = {
+		state.dir_win,
+		state.path_win,
+		state.help_win,
+		state.main_win,
+		state.type_win,
+		state.name_win,
+		state.pkg_win,
+		state.info_win,
+	}
+	for _, w in ipairs(wins) do
+		if w and vim.api.nvim_win_is_valid(w) then
+			pcall(vim.api.nvim_win_close, w, true)
+		end
+	end
+	state.dir_win, state.path_win, state.help_win = nil, nil, nil
+	state.main_win, state.type_win, state.name_win, state.pkg_win, state.info_win = nil, nil, nil, nil, nil
+	state.stage = nil
+end
+
+-- ═════════════════════════════════════════════════════════════
+--  STAGE 1 — DIRECTORY PICKER
+-- ═════════════════════════════════════════════════════════════
+
+local function render_dir_list()
+	if not (state.dir_buf and vim.api.nvim_buf_is_valid(state.dir_buf)) then
+		return
+	end
+	vim.api.nvim_set_option_value("modifiable", true, { buf = state.dir_buf })
+
+	local lines = { "  ..  (up a level)" }
+	for i, name in ipairs(state.entries) do
+		lines[i + 1] = "  " .. name .. "/"
+	end
+	if #state.entries == 0 then
+		table.insert(lines, "  (no subdirectories)")
+	end
+	vim.api.nvim_buf_set_lines(state.dir_buf, 0, -1, false, lines)
+
+	-- redraw selection marker
+	for i = 1, #lines do
+		local text = vim.api.nvim_buf_get_lines(state.dir_buf, i - 1, i, false)[1] or ""
+		text = text:gsub("^  [▸ ]?", "  ")
+		if i == state.selected_entry then
+			text = "▸ " .. text:sub(3)
+		else
+			text = "  " .. text:sub(3)
+		end
+		vim.api.nvim_buf_set_lines(state.dir_buf, i - 1, i, false, { text })
+	end
+
+	vim.api.nvim_set_option_value("modifiable", false, { buf = state.dir_buf })
+
+	if state.dir_win and vim.api.nvim_win_is_valid(state.dir_win) then
+		pcall(vim.api.nvim_win_set_cursor, state.dir_win, { state.selected_entry, 0 })
+	end
+
+	-- update path bar
+	if state.path_buf and vim.api.nvim_buf_is_valid(state.path_buf) then
+		vim.api.nvim_set_option_value("modifiable", true, { buf = state.path_buf })
+		vim.api.nvim_buf_set_lines(state.path_buf, 0, -1, false, { " " .. state.current_dir })
+		vim.api.nvim_set_option_value("modifiable", false, { buf = state.path_buf })
+	end
+end
+
+local function dir_refresh(new_dir)
+	state.current_dir = new_dir
+	state.entries = list_subdirs(new_dir)
+	state.selected_entry = 1
+	render_dir_list()
+end
+
+-- forward declaration
+local open_type_stage
+
+local function dir_navigate(delta)
+	local max = #state.entries + 1 -- +1 for ".."
+	state.selected_entry = math.max(1, math.min(max, state.selected_entry + delta))
+	render_dir_list()
+end
+
+local function dir_enter()
+	if state.selected_entry == 1 then
+		dir_refresh(path_parent(state.current_dir))
+	else
+		local name = state.entries[state.selected_entry - 1]
+		if name then
+			dir_refresh(path_join(state.current_dir, name))
+		end
+	end
+end
+
+local function dir_confirm_here()
+	local chosen = state.current_dir
+	close_all()
+	vim.schedule(function()
+		open_type_stage(chosen)
+	end)
+end
+
+local function open_dir_stage(start_dir)
+	close_all()
+	state.stage = "dir"
+
+	local screen_w, screen_h = screen_dims()
+	local w, h = 64, 22
+	local row = math.floor((screen_h - h) / 2)
+	local col = math.floor((screen_w - w) / 2)
+
+	-- path bar
+	state.path_buf = create_buf({ " " .. start_dir }, false)
+	state.path_win = open_float(state.path_buf, {
+		relative = "editor",
+		row = row,
+		col = col,
+		width = w,
+		height = 1,
+		style = "minimal",
+		border = "rounded",
+		title = " Current Directory ",
+		title_pos = "center",
+		focusable = false,
+		zindex = 60,
+	})
+	safe_highlight(state.path_buf, "Directory", 0, 0, -1)
+
+	-- directory list
+	local list_h = h - 4
+	state.dir_buf = create_buf({}, false)
+	state.dir_win = open_float(state.dir_buf, {
+		relative = "editor",
+		row = row + 2,
+		col = col,
+		width = w,
+		height = list_h,
+		style = "minimal",
+		border = "single",
+		title = " Browse (Enter=open, l=select here) ",
+		title_pos = "center",
+		focusable = true,
+		zindex = 60,
+	})
+	if state.dir_win then
+		pcall(vim.api.nvim_set_option_value, "cursorline", true, { win = state.dir_win })
+	end
+
+	-- help bar
+	state.help_buf = create_buf({
+		" j/k move   Enter open dir   l/<S-CR> select this dir   Esc close",
+	}, false)
+	state.help_win = open_float(state.help_buf, {
+		relative = "editor",
+		row = row + 2 + list_h,
+		col = col,
+		width = w,
+		height = 1,
+		style = "minimal",
+		border = "single",
+		title = "",
+		focusable = false,
+		zindex = 60,
+	})
+	safe_highlight(state.help_buf, "Comment", 0, 0, -1)
+
+	state.owned_wins = {
+		[state.path_win] = true,
+		[state.dir_win] = true,
+		[state.help_win] = true,
+	}
+
+	if state.dir_win then
+		vim.api.nvim_set_current_win(state.dir_win)
+	end
+
+	dir_refresh(start_dir)
+
+	if state.dir_buf then
+		map(state.dir_buf, "n", "j", function()
+			dir_navigate(1)
+		end)
+		map(state.dir_buf, "n", "k", function()
+			dir_navigate(-1)
+		end)
+		map(state.dir_buf, "n", "<Down>", function()
+			dir_navigate(1)
+		end)
+		map(state.dir_buf, "n", "<Up>", function()
+			dir_navigate(-1)
+		end)
+		map(state.dir_buf, "n", "<CR>", dir_enter)
+		map(state.dir_buf, "n", "l", dir_confirm_here)
+		map(state.dir_buf, "n", "<S-CR>", dir_confirm_here)
+		map(state.dir_buf, "n", "h", function()
+			dir_refresh(path_parent(state.current_dir))
+		end)
+		map(state.dir_buf, "n", "<Esc>", close_all)
+		map(state.dir_buf, "n", "q", close_all)
+	end
+
+	local group = vim.api.nvim_create_augroup("JavaCreatorClose", { clear = true })
+	vim.api.nvim_create_autocmd("WinLeave", {
+		group = group,
+		callback = function()
+			vim.schedule(function()
+				if state.stage ~= "dir" then
+					return
+				end
+				local cur = vim.api.nvim_get_current_win()
+				if not state.owned_wins[cur] then
+					close_all()
+				end
+			end)
+		end,
+	})
+end
+
+-- ═════════════════════════════════════════════════════════════
+--  STAGE 2 — TYPE + NAME PICKER
+-- ═════════════════════════════════════════════════════════════
+
 local function render_type_list()
-  if not state.type_buf or not vim.api.nvim_buf_is_valid(state.type_buf) then
-    return
-  end
-
-  vim.api.nvim_set_option_value("modifiable", true, { buf = state.type_buf })
-
-  local lines = {}
-  for i, key in ipairs(TEMPLATE_KEYS) do
-    if i == state.selected_type then
-      lines[i] = "  ▸ " .. key
-    else
-      lines[i] = "    " .. key
-    end
-  end
-  vim.api.nvim_buf_set_lines(state.type_buf, 0, -1, false, lines)
-
-  -- Move cursor to selected line
-  if state.type_win and vim.api.nvim_win_is_valid(state.type_win) then
-    vim.api.nvim_win_set_cursor(state.type_win, { state.selected_type, 0 })
-  end
-
-  vim.api.nvim_set_option_value("modifiable", false, { buf = state.type_buf })
+	if not (state.type_buf and vim.api.nvim_buf_is_valid(state.type_buf)) then
+		return
+	end
+	vim.api.nvim_set_option_value("modifiable", true, { buf = state.type_buf })
+	local lines = {}
+	for i, key in ipairs(TEMPLATE_KEYS) do
+		lines[i] = (i == state.selected_type and "  ▸ " or "    ") .. key
+	end
+	vim.api.nvim_buf_set_lines(state.type_buf, 0, -1, false, lines)
+	if state.type_win and vim.api.nvim_win_is_valid(state.type_win) then
+		pcall(vim.api.nvim_win_set_cursor, state.type_win, { state.selected_type, 0 })
+	end
+	vim.api.nvim_set_option_value("modifiable", false, { buf = state.type_buf })
 end
 
--- ─────────────────────────────────────────────────────────────
---  MAIN OPEN FUNCTION
--- ─────────────────────────────────────────────────────────────
+local function focus_insert(win)
+	if win and vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_set_current_win(win)
+		vim.cmd("startinsert!")
+	end
+end
+
+local function switch_to_insert(target_win)
+	vim.cmd("stopinsert")
+	vim.schedule(function()
+		focus_insert(target_win)
+	end)
+end
+
+local function switch_to_type_list()
+	vim.cmd("stopinsert")
+	vim.schedule(function()
+		if state.type_win and vim.api.nvim_win_is_valid(state.type_win) then
+			vim.api.nvim_set_current_win(state.type_win)
+		end
+	end)
+end
+
+local function create_file()
+	local name = vim.trim((vim.api.nvim_buf_get_lines(state.name_buf, 0, 1, false)[1] or ""))
+	local pkg = vim.trim((vim.api.nvim_buf_get_lines(state.pkg_buf, 0, 1, false)[1] or ""))
+
+	if name == "" then
+		vim.notify("⚠  Class name cannot be empty", vim.log.levels.WARN)
+		vim.schedule(function()
+			focus_insert(state.name_win)
+		end)
+		return
+	end
+
+	if pkg == "" then
+		pkg = state.package
+	end
+	name = name:gsub("%.java$", "")
+
+	local tpl_key = TEMPLATE_KEYS[state.selected_type]
+	local tpl_fn = templates[tpl_key]
+	if not tpl_fn then
+		vim.notify("Unknown template: " .. tostring(tpl_key), vim.log.levels.ERROR)
+		return
+	end
+
+	local filepath = path_join(state.target_dir, name .. ".java")
+
+	if vim.loop.fs_stat(filepath) then
+		vim.notify("⚠  File already exists: " .. filepath, vim.log.levels.WARN)
+		return
+	end
+
+	local fd = io.open(filepath, "w")
+	if not fd then
+		vim.notify("❌ Could not write: " .. filepath, vim.log.levels.ERROR)
+		return
+	end
+	fd:write(tpl_fn(pkg, name))
+	fd:close()
+
+	close_all()
+
+	vim.schedule(function()
+		-- Open directly in the current/last active normal window, not in a leftover float
+		vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+		local line_count = vim.api.nvim_buf_line_count(0)
+		vim.api.nvim_win_set_cursor(0, { math.max(1, line_count - 1), 0 })
+		vim.notify("✅ Created " .. tpl_key .. ": " .. name .. ".java  →  " .. filepath, vim.log.levels.INFO)
+	end)
+end
+
+function open_type_stage(target_dir)
+	close_all()
+	state.stage = "type"
+	state.target_dir = target_dir
+	state.package = infer_package(target_dir)
+	state.selected_type = 1
+
+	local screen_w, screen_h = screen_dims()
+	local main_w, main_h = 72, 28
+	local main_row = math.floor((screen_h - main_h) / 2)
+	local main_col = math.floor((screen_w - main_w) / 2)
+
+	state.main_buf = create_buf({
+		"  ☕  New Java File   →   " .. target_dir,
+		"────────────────────────────────────────────────────────────────────",
+		"  j/k navigate   CR confirm/create   Tab next field   Esc back/close",
+		"────────────────────────────────────────────────────────────────────",
+	}, false)
+	safe_highlight(state.main_buf, "Title", 0, 0, -1)
+	safe_highlight(state.main_buf, "Comment", 2, 0, -1)
+
+	state.main_win = open_float(state.main_buf, {
+		relative = "editor",
+		row = main_row,
+		col = main_col,
+		width = main_w,
+		height = main_h,
+		style = "minimal",
+		border = "rounded",
+		title = " ☕ Java File Creator ",
+		title_pos = "center",
+		zindex = 50,
+		focusable = false,
+	})
+
+	local type_w, type_h = 26, #TEMPLATE_KEYS
+	local type_row, type_col = main_row + 5, main_col + 2
+
+	local type_lines = {}
+	for i, key in ipairs(TEMPLATE_KEYS) do
+		type_lines[i] = (i == 1 and "  ▸ " or "    ") .. key
+	end
+	state.type_buf = create_buf(type_lines, false)
+	state.type_win = open_float(state.type_buf, {
+		relative = "editor",
+		row = type_row,
+		col = type_col,
+		width = type_w,
+		height = type_h,
+		style = "minimal",
+		border = "single",
+		title = " Type ",
+		title_pos = "center",
+		focusable = true,
+		zindex = 60,
+	})
+	if state.type_win then
+		pcall(vim.api.nvim_set_option_value, "cursorline", true, { win = state.type_win })
+	end
+
+	local input_col = main_col + type_w + 5
+	local input_w = main_w - type_w - 9
+
+	state.name_buf = create_buf({ "" }, true)
+	state.name_win = open_float(state.name_buf, {
+		relative = "editor",
+		row = type_row,
+		col = input_col,
+		width = input_w,
+		height = 1,
+		style = "minimal",
+		border = "single",
+		title = " Class Name ",
+		title_pos = "center",
+		focusable = true,
+		zindex = 60,
+	})
+
+	state.pkg_buf = create_buf({ state.package }, true)
+	state.pkg_win = open_float(state.pkg_buf, {
+		relative = "editor",
+		row = type_row + 3,
+		col = input_col,
+		width = input_w,
+		height = 1,
+		style = "minimal",
+		border = "single",
+		title = " Package ",
+		title_pos = "center",
+		focusable = true,
+		zindex = 60,
+	})
+
+	local info_buf = create_buf({
+		"",
+		"  Dir → " .. target_dir,
+		"",
+		"  CR on type list → jump to Class Name",
+		"  Tab in any input → switch Name ↔ Package",
+		"  CR  in any input → create file",
+		"  Esc in input → back to type list",
+		"  Esc on type list → close",
+	}, false)
+	state.info_win = open_float(info_buf, {
+		relative = "editor",
+		row = type_row + 6,
+		col = input_col,
+		width = input_w,
+		height = 7,
+		style = "minimal",
+		border = "single",
+		title = " Info ",
+		title_pos = "center",
+		focusable = false,
+		zindex = 60,
+	})
+	for _, l in ipairs({ 1, 3, 4, 5, 6, 7 }) do
+		safe_highlight(info_buf, "Comment", l, 0, -1)
+	end
+
+	state.owned_wins = {
+		[state.main_win] = true,
+		[state.type_win] = true,
+		[state.name_win] = true,
+		[state.pkg_win] = true,
+		[state.info_win] = true,
+	}
+
+	if state.type_win then
+		vim.api.nvim_set_current_win(state.type_win)
+	end
+
+	local function navigate(delta)
+		state.selected_type = math.max(1, math.min(#TEMPLATE_KEYS, state.selected_type + delta))
+		render_type_list()
+	end
+
+	map(state.type_buf, "n", "j", function()
+		navigate(1)
+	end)
+	map(state.type_buf, "n", "k", function()
+		navigate(-1)
+	end)
+	map(state.type_buf, "n", "<Down>", function()
+		navigate(1)
+	end)
+	map(state.type_buf, "n", "<Up>", function()
+		navigate(-1)
+	end)
+	map(state.type_buf, "n", "<CR>", function()
+		vim.schedule(function()
+			focus_insert(state.name_win)
+		end)
+	end)
+	map(state.type_buf, "n", "<Tab>", function()
+		vim.schedule(function()
+			focus_insert(state.name_win)
+		end)
+	end)
+	map(state.type_buf, "n", "<Esc>", close_all)
+	map(state.type_buf, "n", "q", close_all)
+	-- go back to directory picker
+	map(state.type_buf, "n", "b", function()
+		local cur_dir = state.target_dir
+		close_all()
+		vim.schedule(function()
+			open_dir_stage(cur_dir)
+		end)
+	end)
+
+	map(state.name_buf, "i", "<CR>", function()
+		vim.cmd("stopinsert")
+		vim.schedule(create_file)
+	end)
+	map(state.name_buf, "n", "<CR>", create_file)
+	map(state.name_buf, "i", "<Tab>", function()
+		switch_to_insert(state.pkg_win)
+	end)
+	map(state.name_buf, "n", "<Tab>", function()
+		vim.schedule(function()
+			focus_insert(state.pkg_win)
+		end)
+	end)
+	map(state.name_buf, "i", "<Esc>", switch_to_type_list)
+	map(state.name_buf, "n", "<Esc>", function()
+		if state.type_win and vim.api.nvim_win_is_valid(state.type_win) then
+			vim.api.nvim_set_current_win(state.type_win)
+		end
+	end)
+
+	map(state.pkg_buf, "i", "<CR>", function()
+		vim.cmd("stopinsert")
+		vim.schedule(create_file)
+	end)
+	map(state.pkg_buf, "n", "<CR>", create_file)
+	map(state.pkg_buf, "i", "<Tab>", function()
+		switch_to_insert(state.name_win)
+	end)
+	map(state.pkg_buf, "n", "<Tab>", function()
+		vim.schedule(function()
+			focus_insert(state.name_win)
+		end)
+	end)
+	map(state.pkg_buf, "i", "<Esc>", switch_to_type_list)
+	map(state.pkg_buf, "n", "<Esc>", function()
+		if state.type_win and vim.api.nvim_win_is_valid(state.type_win) then
+			vim.api.nvim_set_current_win(state.type_win)
+		end
+	end)
+
+	local group = vim.api.nvim_create_augroup("JavaCreatorClose", { clear = true })
+	vim.api.nvim_create_autocmd("WinLeave", {
+		group = group,
+		callback = function()
+			vim.schedule(function()
+				if state.stage ~= "type" then
+					return
+				end
+				local cur = vim.api.nvim_get_current_win()
+				if not state.owned_wins[cur] then
+					close_all()
+				end
+			end)
+		end,
+	})
+end
+
+-- ═════════════════════════════════════════════════════════════
+--  ENTRY POINT
+-- ═════════════════════════════════════════════════════════════
 
 function M.open()
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    close_all()
-    return
-  end
-
-  state.target_dir = get_target_dir()
-  state.package = infer_package(state.target_dir)
-  state.selected_type = 1
-  state.class_name = ""
-
-  local ui = vim.api.nvim_list_uis()[1]
-  local screen_w = ui.width
-  local screen_h = ui.height
-
-  -- ── Main container window (title bar + backdrop) ──────────
-  local main_w = 72
-  local main_h = 28
-  local main_row = math.floor((screen_h - main_h) / 2)
-  local main_col = math.floor((screen_w - main_w) / 2)
-
-  local title_lines = {
-    "  ☕  New Java File                                              ",
-    "──────────────────────────────────────────────────────────────────",
-    "  j/k  navigate    Enter  create    Tab  jump fields    Esc  close",
-    "──────────────────────────────────────────────────────────────────",
-  }
-
-  state.buf = create_buf(title_lines, false)
-  -- Namespace: highlight title
-  vim.api.nvim_buf_add_highlight(state.buf, -1, "Title", 0, 0, -1)
-  vim.api.nvim_buf_add_highlight(state.buf, -1, "Comment", 2, 0, -1)
-
-  state.win = open_float(state.buf, {
-    relative = "editor",
-    row = main_row,
-    col = main_col,
-    width = main_w,
-    height = main_h,
-    style = "minimal",
-    border = "rounded",
-    title = " ☕ Java File Creator ",
-    title_pos = "center",
-    zindex = 50,
-  })
-
-  -- ── Type selector (left panel) ────────────────────────────
-  local type_w = 26
-  local type_h = #TEMPLATE_KEYS
-  local type_row = main_row + 5
-  local type_col = main_col + 2
-
-  local type_lines = {}
-  for i, key in ipairs(TEMPLATE_KEYS) do
-    type_lines[i] = (i == 1 and "  ▸ " or "    ") .. key
-  end
-
-  state.type_buf = create_buf(type_lines, false)
-  state.type_win = open_float(state.type_buf, {
-    relative = "editor",
-    row = type_row,
-    col = type_col,
-    width = type_w,
-    height = type_h,
-    style = "minimal",
-    border = "single",
-    title = " Type ",
-    title_pos = "center",
-    focusable = true,
-    zindex = 60,
-  })
-  vim.api.nvim_set_option_value("cursorline", true, { win = state.type_win })
-
-  -- ── Class name input ──────────────────────────────────────
-  local input_col = main_col + type_w + 5
-  local input_w = main_w - type_w - 9
-
-  state.name_buf = create_buf({ "" }, true)
-  vim.api.nvim_set_option_value("modifiable", true, { buf = state.name_buf })
-
-  state.name_win = open_float(state.name_buf, {
-    relative = "editor",
-    row = type_row,
-    col = input_col,
-    width = input_w,
-    height = 1,
-    style = "minimal",
-    border = "single",
-    title = " Class Name ",
-    title_pos = "center",
-    focusable = true,
-    zindex = 60,
-  })
-
-  -- ── Package input ─────────────────────────────────────────
-  state.pkg_buf = create_buf({ state.package }, true)
-  vim.api.nvim_set_option_value("modifiable", true, { buf = state.pkg_buf })
-
-  state.pkg_win = open_float(state.pkg_buf, {
-    relative = "editor",
-    row = type_row + 3,
-    col = input_col,
-    width = input_w,
-    height = 1,
-    style = "minimal",
-    border = "single",
-    title = " Package ",
-    title_pos = "center",
-    focusable = true,
-    zindex = 60,
-  })
-
-  -- ── Preview label ─────────────────────────────────────────
-  local preview_buf = create_buf({
-    "",
-    "  Directory → " .. state.target_dir,
-    "",
-    "  Press <CR> in any field to create the file.",
-    "  Press <Tab> to switch between Name / Package fields.",
-  }, false)
-
-  open_float(preview_buf, {
-    relative = "editor",
-    row = type_row + 6,
-    col = input_col,
-    width = input_w,
-    height = 5,
-    style = "minimal",
-    border = "single",
-    title = " Info ",
-    title_pos = "center",
-    focusable = false,
-    zindex = 60,
-  })
-  vim.api.nvim_buf_add_highlight(preview_buf, -1, "Comment", 1, 0, -1)
-  vim.api.nvim_buf_add_highlight(preview_buf, -1, "Comment", 3, 0, -1)
-
-  -- ── Focus type list first ─────────────────────────────────
-  vim.api.nvim_set_current_win(state.type_win)
-
-  -- ─────────────────────────────────────────────────────────
-  --  KEYMAPS — Type list
-  -- ─────────────────────────────────────────────────────────
-
-  local function set_map(buf, mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = buf, silent = true, nowait = true })
-  end
-
-  local function navigate(delta)
-    state.selected_type = math.max(1, math.min(#TEMPLATE_KEYS, state.selected_type + delta))
-    render_type_list()
-  end
-
-  local function create_file()
-    -- Read name and package from their buffers
-    local name_lines = vim.api.nvim_buf_get_lines(state.name_buf, 0, 1, false)
-    local pkg_lines = vim.api.nvim_buf_get_lines(state.pkg_buf, 0, 1, false)
-
-    local name = vim.trim(name_lines[1] or "")
-    local pkg = vim.trim(pkg_lines[1] or state.package)
-
-    if name == "" then
-      vim.notify("⚠  Class name cannot be empty", vim.log.levels.WARN)
-      vim.api.nvim_set_current_win(state.name_win)
-      return
-    end
-
-    -- Sanitize: strip .java if user typed it
-    name = name:gsub("%.java$", "")
-
-    local tpl_key = TEMPLATE_KEYS[state.selected_type]
-    local tpl_fn = templates[tpl_key]
-    if not tpl_fn then
-      vim.notify("Unknown template: " .. tpl_key, vim.log.levels.ERROR)
-      return
-    end
-
-    local content = tpl_fn(pkg, name)
-    local filepath = state.target_dir .. "/" .. name .. ".java"
-
-    -- Check for existing file
-    if vim.loop.fs_stat(filepath) then
-      vim.notify("⚠  File already exists: " .. filepath, vim.log.levels.WARN)
-      return
-    end
-
-    -- Write file
-    local fd = io.open(filepath, "w")
-    if not fd then
-      vim.notify("❌ Could not write to: " .. filepath, vim.log.levels.ERROR)
-      return
-    end
-    fd:write(content)
-    fd:close()
-
-    close_all()
-
-    -- Open in new buffer
-    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
-    -- Position cursor at the right spot (inside class body)
-    vim.cmd("normal! G")
-    vim.cmd("normal! k")
-
-    vim.notify("✅ Created " .. tpl_key .. ": " .. name .. ".java", vim.log.levels.INFO)
-  end
-
-  -- Type list navigation
-  set_map(state.type_buf, "n", "j", function()
-    navigate(1)
-  end)
-  set_map(state.type_buf, "n", "k", function()
-    navigate(-1)
-  end)
-  set_map(state.type_buf, "n", "<Down>", function()
-    navigate(1)
-  end)
-  set_map(state.type_buf, "n", "<Up>", function()
-    navigate(-1)
-  end)
-  set_map(state.type_buf, "n", "<CR>", function()
-    vim.api.nvim_set_current_win(state.name_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.type_buf, "n", "<Tab>", function()
-    vim.api.nvim_set_current_win(state.name_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.type_buf, "n", "<Esc>", close_all)
-  set_map(state.type_buf, "n", "q", close_all)
-
-  -- Name input
-  set_map(state.name_buf, "i", "<CR>", function()
-    vim.cmd("stopinsert")
-    create_file()
-  end)
-  set_map(state.name_buf, "n", "<CR>", create_file)
-  set_map(state.name_buf, "i", "<Tab>", function()
-    vim.cmd("stopinsert")
-    vim.api.nvim_set_current_win(state.pkg_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.name_buf, "n", "<Tab>", function()
-    vim.api.nvim_set_current_win(state.pkg_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.name_buf, "i", "<Esc>", function()
-    vim.cmd("stopinsert")
-    vim.api.nvim_set_current_win(state.type_win)
-  end)
-  set_map(state.name_buf, "n", "<Esc>", function()
-    vim.api.nvim_set_current_win(state.type_win)
-  end)
-
-  -- Package input
-  set_map(state.pkg_buf, "i", "<CR>", function()
-    vim.cmd("stopinsert")
-    create_file()
-  end)
-  set_map(state.pkg_buf, "n", "<CR>", create_file)
-  set_map(state.pkg_buf, "i", "<Tab>", function()
-    vim.cmd("stopinsert")
-    vim.api.nvim_set_current_win(state.name_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.pkg_buf, "n", "<Tab>", function()
-    vim.api.nvim_set_current_win(state.name_win)
-    vim.cmd("startinsert!")
-  end)
-  set_map(state.pkg_buf, "i", "<Esc>", function()
-    vim.cmd("stopinsert")
-    vim.api.nvim_set_current_win(state.type_win)
-  end)
-  set_map(state.pkg_buf, "n", "<Esc>", function()
-    vim.api.nvim_set_current_win(state.type_win)
-  end)
-
-  -- Auto-close when any window is left
-  local group = vim.api.nvim_create_augroup("JavaCreatorClose", { clear = true })
-  vim.api.nvim_create_autocmd("WinLeave", {
-    group = group,
-    callback = function()
-      local cur = vim.api.nvim_get_current_win()
-      local managed = { state.type_win, state.name_win, state.pkg_win, state.win }
-      for _, w in ipairs(managed) do
-        if cur == w then
-          return
-        end
-      end
-      close_all()
-      vim.api.nvim_del_augroup_by_name("JavaCreatorClose")
-    end,
-  })
+	if state.stage then
+		close_all()
+		return
+	end
+	local ok, err = pcall(function()
+		open_dir_stage(get_initial_dir())
+	end)
+	if not ok then
+		close_all()
+		vim.notify("java-creator failed to open: " .. tostring(err), vim.log.levels.ERROR)
+	end
 end
 
--- ─────────────────────────────────────────────────────────────
---  DEFAULT KEYMAP
--- ─────────────────────────────────────────────────────────────
-
--- <leader>jn  →  New Java file (j=java, n=new)
 vim.keymap.set("n", "<leader>jn", M.open, {
-  desc = "Java: New file (IntelliJ-style)",
-  silent = true,
+	desc = "Java: New file (IntelliJ-style)",
+	silent = true,
 })
 
--- Also expose as user command
 vim.api.nvim_create_user_command("JavaNew", M.open, {
-  desc = "Open Java file creator GUI",
+	desc = "Open Java file creator GUI",
 })
 
 return M
