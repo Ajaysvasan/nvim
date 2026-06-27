@@ -515,34 +515,46 @@ local state = {
 
 	owned_wins = {},
 	stage = nil, -- "dir" | "type"
+	original_win = nil,
 }
 
-local function close_all()
+local function close_all(on_complete)
+	-- Set stage to nil immediately to prevent any re-entrant autocmd calls.
+	state.stage = nil
 	-- Always leave insert mode first. If we close our floats while the
 	-- editor is still in insert mode (e.g. a scheduled callback closes
 	-- mid-edit), Neovim keeps "-- INSERT --" active against whatever
 	-- buffer/window becomes current next, which feels like a stuck UI.
 	pcall(vim.cmd, "stopinsert")
-	pcall(vim.api.nvim_del_augroup_by_name, "JavaCreatorClose")
-	state.owned_wins = {}
-	local wins = {
-		state.dir_win,
-		state.path_win,
-		state.help_win,
-		state.main_win,
-		state.type_win,
-		state.name_win,
-		state.pkg_win,
-		state.info_win,
-	}
-	for _, w in ipairs(wins) do
-		if w and vim.api.nvim_win_is_valid(w) then
-			pcall(vim.api.nvim_win_close, w, true)
+	vim.schedule(function()
+		pcall(vim.api.nvim_del_augroup_by_name, "JavaCreatorClose")
+		state.owned_wins = {}
+		local wins = {
+			state.dir_win,
+			state.path_win,
+			state.help_win,
+			state.main_win,
+			state.type_win,
+			state.name_win,
+			state.pkg_win,
+			state.info_win,
+		}
+		for _, w in ipairs(wins) do
+			if w and vim.api.nvim_win_is_valid(w) then
+				pcall(vim.api.nvim_win_close, w, true)
+			end
 		end
-	end
-	state.dir_win, state.path_win, state.help_win = nil, nil, nil
-	state.main_win, state.type_win, state.name_win, state.pkg_win, state.info_win = nil, nil, nil, nil, nil
-	state.stage = nil
+		state.dir_win, state.path_win, state.help_win = nil, nil, nil
+		state.main_win, state.type_win, state.name_win, state.pkg_win, state.info_win = nil, nil, nil, nil, nil
+
+		if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
+			pcall(vim.api.nvim_set_current_win, state.original_win)
+		end
+
+		if type(on_complete) == "function" then
+			vim.schedule(on_complete)
+		end
+	end)
 end
 
 -- ═════════════════════════════════════════════════════════════
@@ -625,14 +637,12 @@ local function dir_confirm_here()
 		return
 	end
 	local chosen = state.current_dir
-	close_all()
-	vim.schedule(function()
+	close_all(function()
 		open_type_stage(chosen)
 	end)
 end
 
 open_dir_stage = function(start_dir)
-	close_all()
 	state.stage = "dir"
 
 	local screen_w, screen_h = screen_dims()
@@ -829,9 +839,7 @@ local function create_file()
 	fd:write(tpl_fn(pkg, name))
 	fd:close()
 
-	close_all()
-
-	vim.schedule(function()
+	close_all(function()
 		-- Open directly in the current/last active normal window, not in a leftover float
 		vim.cmd("edit " .. vim.fn.fnameescape(filepath))
 		local line_count = vim.api.nvim_buf_line_count(0)
@@ -841,7 +849,6 @@ local function create_file()
 end
 
 open_type_stage = function(target_dir)
-	close_all()
 	state.stage = "type"
 	state.target_dir = target_dir
 	state.package = infer_package(target_dir)
@@ -1020,8 +1027,7 @@ open_type_stage = function(target_dir)
 	-- go back to directory picker
 	map(state.type_buf, "n", "b", function()
 		local cur_dir = state.target_dir
-		close_all()
-		vim.schedule(function()
+		close_all(function()
 			open_dir_stage(cur_dir)
 		end)
 	end)
@@ -1092,13 +1098,16 @@ function M.open()
 		close_all()
 		return
 	end
-	local ok, err = pcall(function()
-		open_dir_stage(get_initial_dir())
+	state.original_win = vim.api.nvim_get_current_win()
+	close_all(function()
+		local ok, err = pcall(function()
+			open_dir_stage(get_initial_dir())
+		end)
+		if not ok then
+			close_all()
+			vim.notify("java-creator failed to open: " .. tostring(err), vim.log.levels.ERROR)
+		end
 	end)
-	if not ok then
-		close_all()
-		vim.notify("java-creator failed to open: " .. tostring(err), vim.log.levels.ERROR)
-	end
 end
 
 vim.keymap.set("n", "<leader>jn", M.open, {
