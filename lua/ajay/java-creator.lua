@@ -392,24 +392,28 @@ local function get_initial_dir()
 end
 
 --- List subdirectories of `dir` (sorted, dotfiles excluded except "..").
+--- Returns entries, and a second value indicating whether the scan itself
+--- failed (e.g. permission denied) so callers can show a real error
+--- instead of silently presenting "no subdirectories".
 local function list_subdirs(dir)
 	local entries = {}
 	local fd = vim.loop.fs_scandir(dir)
-	if fd then
-		while true do
-			local name, ftype = vim.loop.fs_scandir_next(fd)
-			if not name then
-				break
-			end
-			if ftype == "directory" and not name:match("^%.") then
-				table.insert(entries, name)
-			end
+	if not fd then
+		return entries, true -- scan_failed = true
+	end
+	while true do
+		local name, ftype = vim.loop.fs_scandir_next(fd)
+		if not name then
+			break
+		end
+		if ftype == "directory" and not name:match("^%.") then
+			table.insert(entries, name)
 		end
 	end
 	table.sort(entries, function(a, b)
 		return a:lower() < b:lower()
 	end)
-	return entries
+	return entries, false
 end
 
 local function path_join(a, b)
@@ -492,6 +496,7 @@ local state = {
 	help_buf = nil,
 	current_dir = nil,
 	entries = {},
+	scan_failed = false,
 	selected_entry = 1,
 
 	-- type/name picker
@@ -513,6 +518,11 @@ local state = {
 }
 
 local function close_all()
+	-- Always leave insert mode first. If we close our floats while the
+	-- editor is still in insert mode (e.g. a scheduled callback closes
+	-- mid-edit), Neovim keeps "-- INSERT --" active against whatever
+	-- buffer/window becomes current next, which feels like a stuck UI.
+	pcall(vim.cmd, "stopinsert")
 	pcall(vim.api.nvim_del_augroup_by_name, "JavaCreatorClose")
 	state.owned_wins = {}
 	local wins = {
@@ -545,26 +555,25 @@ local function render_dir_list()
 	end
 	vim.api.nvim_set_option_value("modifiable", true, { buf = state.dir_buf })
 
-	local lines = { "  ..  (up a level)" }
-	for i, name in ipairs(state.entries) do
-		lines[i + 1] = "  " .. name .. "/"
+	-- Build every line fresh from source data (name + selection state).
+	-- Never re-parse a previously rendered line: the "▸ " marker is a
+	-- multi-byte UTF-8 glyph, so byte-slicing a line that already has it
+	-- (the old approach) corrupts subsequent renders.
+	local raw_labels = { "..  (up a level)" }
+	for _, name in ipairs(state.entries) do
+		table.insert(raw_labels, name .. "/")
 	end
-	if #state.entries == 0 then
-		table.insert(lines, "  (no subdirectories)")
+	if state.scan_failed then
+		table.insert(raw_labels, "⚠  cannot read this directory (permission denied?)")
+	elseif #state.entries == 0 then
+		table.insert(raw_labels, "(no subdirectories)")
+	end
+
+	local lines = {}
+	for i, label in ipairs(raw_labels) do
+		lines[i] = (i == state.selected_entry and "▸ " or "  ") .. label
 	end
 	vim.api.nvim_buf_set_lines(state.dir_buf, 0, -1, false, lines)
-
-	-- redraw selection marker
-	for i = 1, #lines do
-		local text = vim.api.nvim_buf_get_lines(state.dir_buf, i - 1, i, false)[1] or ""
-		text = text:gsub("^  [▸ ]?", "  ")
-		if i == state.selected_entry then
-			text = "▸ " .. text:sub(3)
-		else
-			text = "  " .. text:sub(3)
-		end
-		vim.api.nvim_buf_set_lines(state.dir_buf, i - 1, i, false, { text })
-	end
 
 	vim.api.nvim_set_option_value("modifiable", false, { buf = state.dir_buf })
 
@@ -582,13 +591,16 @@ end
 
 local function dir_refresh(new_dir)
 	state.current_dir = new_dir
-	state.entries = list_subdirs(new_dir)
+	state.entries, state.scan_failed = list_subdirs(new_dir)
 	state.selected_entry = 1
 	render_dir_list()
 end
 
--- forward declaration
+-- forward declarations (must stay `local` and be ASSIGNED later with
+-- `open_type_stage = function(...)`, never `function open_type_stage(...)`,
+-- or Lua creates a brand-new global and this upvalue stays nil forever)
 local open_type_stage
+local open_dir_stage
 
 local function dir_navigate(delta)
 	local max = #state.entries + 1 -- +1 for ".."
@@ -608,6 +620,10 @@ local function dir_enter()
 end
 
 local function dir_confirm_here()
+	if state.scan_failed then
+		vim.notify("⚠  Can't use this directory — it isn't readable (permission denied?)", vim.log.levels.WARN)
+		return
+	end
 	local chosen = state.current_dir
 	close_all()
 	vim.schedule(function()
@@ -615,7 +631,7 @@ local function dir_confirm_here()
 	end)
 end
 
-local function open_dir_stage(start_dir)
+open_dir_stage = function(start_dir)
 	close_all()
 	state.stage = "dir"
 
@@ -824,7 +840,7 @@ local function create_file()
 	end)
 end
 
-function open_type_stage(target_dir)
+open_type_stage = function(target_dir)
 	close_all()
 	state.stage = "type"
 	state.target_dir = target_dir
@@ -836,8 +852,18 @@ function open_type_stage(target_dir)
 	local main_row = math.floor((screen_h - main_h) / 2)
 	local main_col = math.floor((screen_w - main_w) / 2)
 
+	-- Truncate long paths so the header line never exceeds main_w and
+	-- wrap/overflow the fixed-width box (which would visually break the
+	-- border on the line below it).
+	local header_prefix = "  ☕  New Java File   →   "
+	local max_dir_len = math.max(8, main_w - #header_prefix - 2)
+	local display_dir = target_dir
+	if #display_dir > max_dir_len then
+		display_dir = "…" .. display_dir:sub(-(max_dir_len - 1))
+	end
+
 	state.main_buf = create_buf({
-		"  ☕  New Java File   →   " .. target_dir,
+		header_prefix .. display_dir,
 		"────────────────────────────────────────────────────────────────────",
 		"  j/k navigate   CR confirm/create   Tab next field   Esc back/close",
 		"────────────────────────────────────────────────────────────────────",
@@ -917,9 +943,15 @@ function open_type_stage(target_dir)
 		zindex = 60,
 	})
 
+	local info_dir = target_dir
+	local info_max_len = math.max(8, input_w - #"  Dir → " - 1)
+	if #info_dir > info_max_len then
+		info_dir = "…" .. info_dir:sub(-(info_max_len - 1))
+	end
+
 	local info_buf = create_buf({
 		"",
-		"  Dir → " .. target_dir,
+		"  Dir → " .. info_dir,
 		"",
 		"  CR on type list → jump to Class Name",
 		"  Tab in any input → switch Name ↔ Package",
