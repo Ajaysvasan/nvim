@@ -345,13 +345,13 @@ dap.adapters.codelldb = {
   type = "server",
   port = "${port}",
   executable = {
-    command = vim.fn.stdpath("data") .. "/mason/bin/codelldb",
+    -- FIX: Point directly to the raw extension binary
+    command = vim.fn.stdpath("data") .. "/mason/packages/codelldb/extension/adapter/codelldb",
     args = { "--port", "${port}" },
     -- On Linux, detach the subprocess cleanly
     detached = vim.fn.has("win32") == 0,
   },
 }
-
 local lldb_configs = {
   {
     type = "codelldb",
