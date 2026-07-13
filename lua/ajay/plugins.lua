@@ -27,8 +27,8 @@ require("lazy").setup({
     config = function()
       require("jupytext").setup({
         style = "markdown",
-        output_extension = "md",
-        force_ft = "markdown",
+        output_extension = "auto",
+        force_ft = nil,
         custom_language_formatting = {},
       })
     end,
@@ -39,7 +39,7 @@ require("lazy").setup({
     build = ":UpdateRemotePlugins",
     enabled = true,
     init = function()
-      vim.g.molten_image_provider = "none"
+      vim.g.molten_image_provider = "image.nvim"
       vim.g.molten_output_win_max_height = 20
       vim.g.molten_auto_open_output = false
       vim.g.molten_wrap_output = true
@@ -66,7 +66,7 @@ require("lazy").setup({
   },
   {
     "3rd/image.nvim",
-    enabled = false, -- Set to true if you want to use real images
+    enabled = true, -- Set to true if you want to use real images
     dependencies = {
       "leafo/magick",
     },
