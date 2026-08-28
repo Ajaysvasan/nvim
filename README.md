@@ -1,6 +1,5 @@
 # ajay's Neovim configuration
 
-:qa
 
 A Lua-based Neovim config built around [lazy.nvim](https://github.com/folke/lazy.nvim),
 with first-class support for **Java / Spring Boot**, **C/C++**, **Python**,
