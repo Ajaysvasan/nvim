@@ -55,7 +55,7 @@ three failure modes and names the file in each:
 | `indent-blankline` | `BufReadPost`, `BufNewFile` | |
 | `Comment.nvim` | `BufReadPost`, `BufNewFile` | |
 | `undotree` | `cmd = Undotree*`, `<leader>u` | |
-| `nvim-emmet` | `ft = html, css, jsx, tsx, vue, svelte` | |
+| `nvim-emmet` | `ft = html, htmlangular, css, scss, less, jsx, tsx, vue, svelte` | Inert without `emmet_language_server` — see [qol.md](qol.md#it-needs-a-language-server) |
 | `rainbow-delimiters.nvim` | `BufReadPost`, `BufNewFile` | |
 | jupytext / image.nvim / molten | `enabled = vim.g.enable_notebook` | Opt-in, see [jupyter.md](jupyter.md) |
 

@@ -67,11 +67,25 @@ Then `:TSReset` and restart.
 ## Installed parsers
 
 `c`, `cpp`, `python`, `java`, `javascript`, `typescript`, `tsx`, `html`, `css`,
-`json`, `lua`, `luadoc`, `bash`, `markdown`, `markdown_inline`, `vim`, `vimdoc`,
-`regex`, `query`, **`xml`**, **`yaml`**, **`properties`**
+**`scss`**, **`angular`**, `json`, `lua`, `luadoc`, `bash`, `markdown`,
+`markdown_inline`, `vim`, `vimdoc`, `regex`, `query`, **`xml`**, **`yaml`**,
+**`properties`**
 
-The last three are new and Java-motivated: `xml` for `pom.xml`, `yaml` for
-`application.yml`, `properties` for `application.properties`.
+`xml`, `yaml` and `properties` are Java-motivated: `xml` for `pom.xml`, `yaml`
+for `application.yml`, `properties` for `application.properties`.
+
+`scss` and `angular` close two gaps where a filetype the config otherwise
+supports fully was silently falling back to regex syntax:
+
+| Parser | Why it was missing | What it fixes |
+|---|---|---|
+| `scss` | `css` was listed, `scss` was not — but they are **separate parsers**, not one language | `.scss` files, which conform already formats and `cssls` already attaches to |
+| `angular` | `.component.html` resolves to filetype `htmlangular`, which maps to language **`angular`**, not `html` | Angular templates — see [lsp.md](lsp.md#angularls--root_markers-is-not-a-gate) |
+
+**A filetype is not a language.** `vim.treesitter.language.get_lang(ft)` does the
+translation, and `htmlangular → angular` is the case that catches people out:
+adding `html` to the list does nothing for Angular templates. Check with
+`:TSStatus`, which prints both.
 
 `markdown_inline` is separate from `markdown` and required for inline code spans,
 links and emphasis to highlight. `vim` + `vimdoc` + `query` + `luadoc` make

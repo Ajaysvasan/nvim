@@ -58,7 +58,8 @@ close.
 
 ## nvim-emmet
 
-Loads on `ft = html, css, javascriptreact, typescriptreact, vue, svelte`.
+Loads on `ft = html, htmlangular, css, scss, less, javascriptreact,
+typescriptreact, vue, svelte`.
 
 | Key | Mode | Action |
 |---|---|---|
@@ -66,6 +67,21 @@ Loads on `ft = html, css, javascriptreact, typescriptreact, vue, svelte`.
 
 Select some text, press `<leader>xe`, type something like `div.card>ul>li*3`, and
 it expands around the selection.
+
+### It needs a language server
+
+**nvim-emmet is not a standalone expander.** `wrap_with_abbreviation` sends an
+`emmet/expandAbbreviation` **LSP request** and silently returns if nothing
+answers — no error, no message, the key just does nothing.
+
+That is exactly what happened until `emmet_language_server` was added to
+`ensure_servers` in [lsp.md](lsp.md): the plugin was installed, the keymap was
+mapped, and `<leader>xe` had never once worked.
+
+The filetype list above is `emmet-language-server`'s own, minus templating
+languages this config has no other support for. It previously omitted
+`htmlangular`, `scss` and `less` — three filetypes where the server *does*
+attach but the keymap did not even exist.
 
 > `<leader>x` is otherwise the LSP diagnostics prefix (`<leader>xd`, `<leader>xq`
 > — see [lsp.md](lsp.md)), and `<leader>x` alone is "save and quit" from

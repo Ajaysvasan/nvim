@@ -48,6 +48,7 @@ except where noted.
 |---|---|---|
 | `:JdtlsLog` | [jdtls](jdtls.md) | Open this project's Eclipse-side `.metadata/.log` — where the real Java errors are |
 | `:JdtlsWipeWorkspace` | jdtls | Delete this project's jdtls workspace; fixes stale classpath errors |
+| `:JdtlsRescanJDKs` | jdtls | Re-scan installed JDKs. Only needed after installing one mid-session — the scan is cached because it costs ~150 ms per JDK |
 | `:JdtUpdateConfig` | jdtls *(plugin built-in)* | Re-import `pom.xml` / `build.gradle` |
 | `:SpringBootCreate` | [springboot](springboot.md) | Create a project via Spring Initializr |
 | `:SpringBootRun` | springboot | `./mvnw spring-boot:run` / `./gradlew bootRun` |

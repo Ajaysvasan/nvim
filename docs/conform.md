@@ -13,10 +13,21 @@ Loads on `BufWritePre`, `:ConformInfo`, `:Format`, or `<leader>lf`.
 | `lua` | `stylua` |
 | `python` | `isort` then `black` (imports sorted first, then reformat) |
 | `javascript`, `javascriptreact`, `typescript`, `typescriptreact` | `prettier` |
-| `html`, `css`, `scss`, `json`, `jsonc`, `yaml`, `markdown` | `prettier` |
+| `html`, **`htmlangular`**, `css`, `scss`, `json`, `jsonc`, `yaml`, `markdown` | `prettier` |
 | `c`, `cpp` | `clang_format` |
 | `java` | `google-java-format` |
 | `sh`, `bash` | `shfmt` |
+
+### Why `htmlangular` is listed separately
+
+Angular templates are their **own filetype**, so the `html` entry never reached
+them — `<leader>lf` and format-on-save were both silent no-ops in every
+`.component.html`.
+
+Plain `prettier` is enough; no `--parser angular` needed. Its html parser
+already handles `*ngIf`, `[(ngModel)]`, `(click)`, `{{ interpolation }}` and
+Angular 17 `@if` / `@for` control-flow blocks — verified byte-identical output
+between the two parsers on all of them.
 
 All of these are installed by `mason-tool-installer` — see [lsp.md](lsp.md).
 

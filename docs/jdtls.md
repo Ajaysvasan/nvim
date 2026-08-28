@@ -21,6 +21,16 @@ never started on the first Java file you opened.
 
 ## JDK discovery
 
+> **The scan is cached for the session.** It shells out — one
+> `/usr/libexec/java_home -V` plus a `java -version` per candidate whose version
+> cannot be read otherwise — and `java -version` costs ~150 ms because it boots
+> a JVM to print one line. Three callers need the result
+> (`detect_runtimes()`, `launcher_java()` and `:AjayDoctor`), so uncached it ran
+> the full probe **four times per Java buffer**: 13 subprocesses and ~760 ms of
+> blocking work before the file was editable, every pass returning the same
+> answer. Now: **4 subprocesses, ~196 ms**. Run `:JdtlsRescanJDKs` after
+> installing a JDK mid-session.
+
 Two separate questions, often confused:
 
 - **Which JDK runs jdtls?** Must be recent (21+ currently) — this is a property
@@ -217,6 +227,7 @@ here** — `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca` come from the shared
 | `:JdtlsLog` | Open **this project's** Eclipse-side log (`.metadata/.log`) in a new tab, scrolled to the bottom. This is where "it worked yesterday" answers live: OOM kills, classpath resolution failures and Maven import errors are logged here and **nowhere** in Neovim's `:messages`. |
 | `:JdtlsWipeWorkspace` | Delete this project's jdtls workspace. The fix for stale classpath errors that survive a restart. Re-indexes on next launch. |
 | `:JdtUpdateConfig` | Plugin built-in — re-import the build config |
+| `:JdtlsRescanJDKs` | Drop the cached JDK scan and redo it, then print what was found. Only needed after **installing or removing a JDK while Neovim is running** — the set of installed JDKs is otherwise stable for the session, and re-probing it is the single most expensive thing this file does. |
 
 ## Troubleshooting
 

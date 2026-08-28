@@ -62,11 +62,25 @@ local ensure_servers = {
   "cssls",
   "lua_ls",
   "tailwindcss",
+  -- Angular. filetypes = typescript, html, typescriptreact, htmlangular;
+  -- root_markers = angular.json / nx.json, so it starts ONLY inside an
+  -- actual Angular workspace and stays out of the way in every other
+  -- TypeScript project. Without it a .component.html gets the generic
+  -- html server, which has never heard of *ngIf, [(ngModel)] or @if.
+  "angularls",
+  -- Emmet. nvim-emmet (<leader>xe) is not a standalone expander -- it
+  -- sends emmet/expandAbbreviation over LSP and does NOTHING if no server
+  -- answers. That keymap was silently dead until this server existed.
+  "emmet_language_server",
 }
 
 local ensure_tools = {
   "prettier",
-  "eslint_d",
+  -- eslint_d was here. Nothing used it: it is a daemon for nvim-lint /
+  -- null-ls, and this config has neither -- ESLint diagnostics come from
+  -- the `eslint` language server above, and fixes from LspEslintFixAll on
+  -- BufWritePre. Keeping it meant a package to install and update that
+  -- could never affect the editor.
   "clang-format",
   "black",
   "isort",
@@ -150,6 +164,26 @@ vim.lsp.config("lua_ls", {
       telemetry = { enable = false },
     },
   },
+})
+
+-- angularls ships `root_markers = { "angular.json", "nx.json" }`, which is
+-- NOT a gate. When no marker matches, vim.lsp leaves root_dir nil and
+-- starts the server anyway in single-file mode -- so a plain React or
+-- Node project was spawning an ngserver process for every .ts, .tsx and
+-- .html buffer it opened.
+--
+-- A root_dir FUNCTION is the actual gate: the client only starts if
+-- on_dir() is called, so returning without calling it means "not an
+-- Angular workspace, do not start".
+vim.lsp.config("angularls", {
+  root_dir = function(bufnr, on_dir)
+    local fname = vim.api.nvim_buf_get_name(bufnr)
+    local start = fname ~= "" and fname or vim.fn.getcwd()
+    local root = vim.fs.root(start, { "angular.json", "nx.json" })
+    if root then
+      on_dir(root)
+    end
+  end,
 })
 
 vim.lsp.config("tailwindcss", {
@@ -313,8 +347,32 @@ end, { desc = "Toggle inlay hints" })
 -- Net effect: on a machine where everything is installed, mason is never
 -- loaded at all unless you ask for it with :Mason or :MasonSync.
 
+-- Node-based servers do NOT ship `cmd` as a table. nvim-lspconfig gives
+-- them a FUNCTION so it can prefer a project-local
+-- node_modules/.bin/<server> over the global one:
+--
+--   cmd = function(dispatchers, config)
+--     local cmd = 'typescript-language-server'
+--     if (config or {}).root_dir then ... prefer local ... end
+--     return vim.lsp.rpc.start({ cmd, '--stdio' }, dispatchers)
+--   end
+--
+-- There is no cmd[1] to read, and calling the function to find out would
+-- SPAWN the server. Every one of these closures falls back to a fixed
+-- global binary name, so name them here. Getting this wrong is silent:
+-- the server is simply never enabled and nothing is logged.
+local fallback_bin = {
+  ts_ls = "typescript-language-server",
+  eslint = "vscode-eslint-language-server",
+  html = "vscode-html-language-server",
+  cssls = "vscode-css-language-server",
+  tailwindcss = "tailwindcss-language-server",
+  angularls = "ngserver",
+  jdtls = "jdtls",
+}
+
 -- The binary that actually has to exist for a server to start, read from
--- the config nvim-lspconfig ships rather than hardcoded here.
+-- the config nvim-lspconfig ships wherever that is possible.
 local function server_bin(name)
   local ok, cfg = pcall(function()
     return vim.lsp.config[name]
@@ -323,15 +381,19 @@ local function server_bin(name)
   if type(cmd) == "table" then
     return cmd[1]
   end
-  return nil -- unknown server name, or a cmd we cannot introspect
+  return fallback_bin[name]
 end
 
-local ready, missing = {}, false
+local ready, missing, unknown = {}, false, {}
 
 for _, name in ipairs(ensure_servers) do
   local bin = server_bin(name)
   if bin == nil then
-    -- Cannot tell. Do not enable it, and do not drag mason in over it.
+    -- A server whose cmd we cannot introspect and that is not in
+    -- fallback_bin. Previously this branch silently did nothing, which is
+    -- exactly how ts_ls/eslint/html/cssls/tailwindcss ended up disabled
+    -- for weeks without a single error message. Say so instead.
+    table.insert(unknown, name)
   elseif vim.fn.executable(bin) ~= 1 then
     missing = true
   elseif name ~= "jdtls" then
@@ -357,6 +419,18 @@ end
 
 if missing then
   vim.schedule(setup_mason)
+end
+
+if #unknown > 0 then
+  vim.schedule(function()
+    vim.notify(
+      "Cannot determine the binary for: "
+        .. table.concat(unknown, ", ")
+        .. "\nThese servers were NOT enabled. Add them to `fallback_bin` in lua/ajay/lsp.lua.",
+      vim.log.levels.WARN,
+      { title = "lsp" }
+    )
+  end)
 end
 
 -- Force the install pass without waiting to notice something is missing.

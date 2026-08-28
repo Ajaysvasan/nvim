@@ -417,8 +417,27 @@ require("lazy").setup({
     },
   },
   {
+    -- NOT a standalone expander. wrap_with_abbreviation sends an
+    -- `emmet/expandAbbreviation` LSP request and silently returns if
+    -- nothing answers, so this plugin is inert without
+    -- emmet-language-server -- which lsp.lua now installs and enables.
+    --
+    -- The filetype list is emmet-language-server's own, minus the
+    -- templating languages this config has no other support for. It used
+    -- to omit htmlangular, scss and less, so the keymap did not even
+    -- exist in three filetypes where the server does attach.
     "olrtg/nvim-emmet",
-    ft = { "html", "css", "javascriptreact", "typescriptreact", "vue", "svelte" },
+    ft = {
+      "html",
+      "htmlangular",
+      "css",
+      "scss",
+      "less",
+      "javascriptreact",
+      "typescriptreact",
+      "vue",
+      "svelte",
+    },
     config = function()
       vim.keymap.set({ "n", "v" }, "<leader>xe", require("nvim-emmet").wrap_with_abbreviation, {
         desc = "Emmet wrap with abbreviation",

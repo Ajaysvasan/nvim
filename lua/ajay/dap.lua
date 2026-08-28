@@ -169,11 +169,24 @@ if ok_mason_dap then
   mason_dap.setup({
     ensure_installed = {
       "python", -- debugpy
-      "js", -- js-debug-adapter (TS/JS/Node)
-      "chrome", -- chrome devtools (frontend debugging)
+      "js", -- js-debug-adapter (TS/JS/Node *and* Chrome)
       "codelldb", -- C / C++ / Rust
-      "delve", -- Go
       -- Java is handled by nvim-jdtls + java-debug-adapter, see below
+      --
+      -- Two entries were removed here:
+      --
+      --   "chrome" -> resolves to the mason package `chrome-debug-adapter`,
+      --   the long-superseded standalone adapter. The `pwa-chrome` adapter
+      --   this config actually registers below comes out of
+      --   js-debug-adapter, which is already in the list. Installing it
+      --   fetched a second, unused, unmaintained adapter.
+      --
+      --   "delve" -> the Go adapter. It needs a Go toolchain to build, so
+      --   on a machine without Go the install FAILS, and because it stays
+      --   in ensure_installed it is retried on every single DAP load --
+      --   "[mason-nvim-dap] installing delve" plus a network job, forever.
+      --   dap.configurations.go below is untouched, so `go install
+      --   github.com/go-delve/delve/cmd/dlv@latest` still lights it up.
     },
     automatic_installation = true,
     handlers = {}, -- use default handlers; we override per-language below

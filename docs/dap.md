@@ -11,10 +11,19 @@ Loads on any `<leader>d*` key, `<F5>`–`<F8>`, or `:DapContinue` / `:DapNew`.
 | Adapter | Covers |
 |---|---|
 | `debugpy` | Python |
-| `js-debug-adapter` | Node, TypeScript, Jest |
-| `chrome-debug-adapter` | Frontend debugging in Chrome |
+| `js-debug-adapter` | Node, TypeScript, Jest **and Chrome** |
 | `codelldb` | C, C++, Rust |
-| `delve` | Go |
+
+Two entries were removed from `ensure_installed`:
+
+| Removed | Why |
+|---|---|
+| `"chrome"` | Resolves to the mason package `chrome-debug-adapter`, the long-superseded standalone adapter. The `pwa-chrome` adapter this config actually registers comes out of **js-debug-adapter**, which is already in the list — so this only ever fetched a second, unused, unmaintained adapter. |
+| `"delve"` | The Go adapter needs a Go toolchain to build. On a machine without Go the install **fails**, and because it stayed in `ensure_installed` it was retried on **every DAP load** — `[mason-nvim-dap] installing delve` plus a network job, forever. |
+
+`dap.configurations.go` and the `delve` adapter definition are untouched:
+`go install github.com/go-delve/delve/cmd/dlv@latest` still lights Go debugging
+up. What changed is only that the config no longer tries to install it for you.
 
 Java is **not** listed — nvim-jdtls registers the Java adapter itself via
 `jdtls.setup_dap()`. Adding `dap.adapters.java` here would conflict.

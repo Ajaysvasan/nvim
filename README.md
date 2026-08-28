@@ -1,7 +1,6 @@
 # ajay's Neovim configuration
 
 
-
 A Lua-based Neovim config built around [lazy.nvim](https://github.com/folke/lazy.nvim),
 with first-class support for **Java / Spring Boot**, **C/C++**, **Python**,
 **JavaScript / TypeScript / React**, and an optional **Jupyter notebook** stack.
@@ -170,7 +169,7 @@ vim.g.ts_disabled_langs = { markdown = true, markdown_inline = true }
 | **`tree-sitter` CLI** | **Required to build treesitter parsers.** nvim-treesitter's `main` branch shells out to the `tree-sitter` binary to compile every parser — a C compiler alone is no longer enough, unlike on the old `master` branch. Without it you get **no syntax highlighting at all** and a wall of `Error during "tree-sitter build" ... ENOENT: 'tree-sitter'` on startup. | any |
 | **ripgrep** (`rg`)                                   | Telescope `live_grep` and `grep_string`                                                                                                                                                                                           | any       |
 | **fd**                                               | Faster Telescope file finding (optional but strongly recommended)                                                                                                                                                                 | any       |
-| **Node.js**                                          | Copilot requires Node **> 18**. Also needed by `js-debug-adapter` and by Mason for every JS-based LSP (`ts_ls`, `html`, `cssls`, `tailwindcss`, `eslint`).                                                                        | **18+**   |
+| **Node.js**                                          | Copilot requires Node **> 18**. Also needed by `js-debug-adapter` and by Mason for every JS-based LSP (`ts_ls`, `html`, `cssls`, `tailwindcss`, `eslint`, `angularls`, `emmet_language_server`).                                                                        | **18+**   |
 | **Python 3** + `pynvim`                              | Neovim's Python provider; required by molten if you enable notebooks                                                                                                                                                              | 3.9+      |
 | **unzip**                                            | Used by `jdtls.lua` to read the jdtls MANIFEST, and by `springboot.lua` to unpack Spring Initializr downloads                                                                                                                     | any       |
 | **curl**                                             | Spring Initializr downloads                                                                                                                                                                                                       | any       |
@@ -183,7 +182,9 @@ vim.g.ts_disabled_langs = { markdown = true, markdown_inline = true }
 | **C / C++**            | `clangd` (via Mason), `g++`/`clang++`, `cmake` for the `<leader>cb` build map, `codelldb` (via Mason) for debugging                                                                                  |
 | **Python**             | `python3`, `debugpy` (via Mason), `pytest` if you use the DAP test maps                                                                                                                              |
 | **JS / TS / React**    | Node 18+, `npm`. LSPs and `js-debug-adapter` come from Mason.                                                                                                                                        |
-| **Go**                 | Go toolchain + `dlv` (Mason installs `delve`)                                                                                                                                                        |
+| **Angular**            | Node 18+, `npm`. `angularls` comes from Mason and starts **only** in a workspace with `angular.json` or `nx.json` — see [docs/lsp.md](docs/lsp.md).                                                  |
+| **HTML / CSS**         | Node 18+. `html`, `cssls`, `tailwindcss` and `emmet_language_server` all come from Mason.                                                                                                            |
+| **Go**                 | Go toolchain + `dlv`. **Install `dlv` yourself** (`go install github.com/go-delve/delve/cmd/dlv@latest`) — Mason no longer tries, because the build fails without Go and it retried forever.        |
 | **Rust**               | `cargo`, `codelldb` (via Mason)                                                                                                                                                                      |
 | **Git UI**             | `lazygit` binary on `PATH` for `<leader>gg`                                                                                                                                                          |
 | **Notebooks** (opt-in) | `ImageMagick`, `jupytext`, `pynvim`, `jupyter_client`, a Kitty-graphics-capable terminal (Kitty, WezTerm, Ghostty)                                                                                   |
@@ -193,13 +194,13 @@ vim.g.ts_disabled_langs = { markdown = true, markdown_inline = true }
 You do not install these by hand. On first launch Mason fetches them:
 
 **LSP servers:** `clangd`, `pyright`, `jdtls`, `ts_ls`, `eslint`, `html`,
-`cssls`, `lua_ls`, `tailwindcss`
+`cssls`, `lua_ls`, `tailwindcss`, `angularls`, `emmet_language_server`
 
-**Formatters/tools:** `prettier`, `eslint_d`, `clang-format`, `black`, `isort`,
-`stylua`, `google-java-format`, `shfmt`
+**Formatters/tools:** `prettier`, `clang-format`, `black`, `isort`, `stylua`,
+`google-java-format`, `shfmt`
 
-**DAP adapters:** `debugpy`, `js-debug-adapter`, `chrome-debug-adapter`,
-`codelldb`, `delve`
+**DAP adapters:** `debugpy`, `js-debug-adapter` (covers Node, TypeScript, Jest
+**and** Chrome), `codelldb`
 
 > Mason installs into `~/.local/share/nvim/mason/`. It needs Node, Python and a
 > JDK present for the servers written in those languages.
@@ -390,20 +391,38 @@ Then set `vim.g.enable_notebook = true` in `init.lua`, restart, and run
 
 ## Startup performance
 
-Measured with `nvim --headless --startuptime`, median of 7 warm runs:
+Measured with `nvim --headless --startuptime`, median of 9 warm runs:
 
 | Scenario | Originally | Now |
 |---|---|---|
-| `nvim` with no file | ~19.5 ms | **~18.5 ms** |
-| `nvim <file>` (LSP + git + treesitter + completion wired up) | ~53.5 ms | **~32 ms** |
-| `nvim Main.java` | — | **~36 ms** |
+| `nvim` with no file | ~19.5 ms | **15.4 ms** |
+| `nvim <file>` (LSP + git + treesitter + completion wired up) | ~53.5 ms | **32.8 ms** |
+| `nvim Main.java` (full jdtls boot in a Maven project) | 762 ms | **196 ms** |
 
-The config is also tuned for **navigation** and **typing responsiveness**, not
-just boot: Telescope drives `fd`/`rg` directly so filtering happens in Rust
-rather than Lua, completion is tuned for the thousand-candidate lists Java and
-Spring produce, CodeLens no longer fires redundant project-wide LSP round trips
-on every `InsertLeave`, and [`bigfile.lua`](docs/bigfile.md) stops a large file
-from freezing the editor.
+## Responsiveness
+
+Boot time is the easy half. The numbers you actually feel:
+
+| What | Time |
+|---|---|
+| Typing, per keystroke | **0.007 ms** (0.435 ms in a 5 000-line file) |
+| Cursor movement, 5 000-line file | **0.002 ms** |
+| Buffer switch | **0.30 ms** (3.24 ms with a 5 000-line buffer loaded) |
+| Treesitter reparse after an edit | **1.44 ms** |
+| Opening a file — 2nd of that language onward | **3–5 ms** |
+| Opening a file — **1st of that language in the session** | 24–126 ms |
+
+That last row is the only one that looks bad, and it is a **once-per-session,
+per-language** cost: lazy.nvim loading that filetype's plugins plus the
+treesitter parser. Open a second TypeScript file and it is 3.1 ms. Language
+servers attach **asynchronously afterwards** (115–295 ms), so they never block
+the buffer from being open and editable.
+
+The config is tuned for this, not just boot: Telescope drives `fd`/`rg` directly
+so filtering happens in Rust rather than Lua, completion is tuned for the
+thousand-candidate lists Java and Spring produce, CodeLens no longer fires
+redundant project-wide LSP round trips on every `InsertLeave`, and
+[`bigfile.lua`](docs/bigfile.md) stops a large file from freezing the editor.
 
 **Full rationale for every decision, and how to reverse any of them, is in
 [docs/performance.md](docs/performance.md).**

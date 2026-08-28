@@ -26,6 +26,13 @@ function M.setup()
 
       -- Web
       html = { "prettier" },
+      -- Angular templates are their OWN filetype (htmlangular), so an
+      -- `html` entry never reached them -- <leader>lf and format-on-save
+      -- were both no-ops in every .component.html. Plain prettier is
+      -- enough: its html parser already understands *ngIf, [(ngModel)],
+      -- {{ interpolation }} and Angular 17 @if/@for control flow, and
+      -- produces byte-identical output to `--parser angular`.
+      htmlangular = { "prettier" },
       css = { "prettier" },
       scss = { "prettier" },
       json = { "prettier" },

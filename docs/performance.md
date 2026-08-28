@@ -3,13 +3,107 @@
 Every speed decision in the config, in one place. Three separate concerns:
 **startup**, **navigation**, and **responsiveness while typing**.
 
-Measured with `nvim --headless --startuptime`, median of 7 warm runs:
+## Startup, measured
+
+`nvim --headless --startuptime`, median of 9 warm runs:
 
 | Scenario | Originally | Now |
 |---|---|---|
-| `nvim` (no file) | ~19.5 ms | **~18.5 ms** |
-| `nvim <file>` | ~53.5 ms | **~32 ms** |
-| `nvim Main.java` | — | **~36 ms** |
+| `nvim` (no file) | ~19.5 ms | **15.4 ms** |
+| `nvim <file>` | ~53.5 ms | **32.8 ms** |
+| `nvim Main.java` (in a Maven project) | 762 ms | **196 ms** |
+
+Re-measured after the language-server fixes (`angularls` and
+`emmet_language_server` added, `eslint_d` dropped): **unchanged**. Enabling a
+server costs nothing at startup — `vim.lsp.enable()` only registers it, and the
+client is not started until a matching buffer opens.
+
+## Responsiveness, measured
+
+The numbers people actually feel. Same machine, warm caches:
+
+| What | Time | Notes |
+|---|---|---|
+| Typing, per keystroke | **0.007 ms** | Normal-size file |
+| Typing, per keystroke | **0.435 ms** | Inside a 5 000-line file |
+| Typing brackets/quotes | **0.011 ms** | Exercises nvim-autopairs |
+| Cursor move `j` | **0.002 ms** | 5 000-line file |
+| Random jump + `zz` | **0.003 ms** | 5 000-line file |
+| Buffer switch `:bnext` | **0.30 ms** | Small buffers |
+| Buffer switch `:bnext` | **3.24 ms** | With a 5 000-line buffer in the ring |
+| Treesitter incremental reparse | **1.44 ms** median, 2.19 ms worst | After an edit, 5 000 lines |
+| Treesitter **first** parse | **142.8 ms** | One-time per buffer, 5 000 lines |
+
+### The JDK scan was the worst offender — 762 ms → 196 ms
+
+Found by benchmarking, not by reading code, and it had been there the whole
+time. [`jdtls.lua`](jdtls.md#jdk-discovery) probes for installed JDKs by
+shelling out: `/usr/libexec/java_home -V`, plus `java -version` for each
+candidate it cannot version any other way. **`java -version` costs ~150 ms** —
+it boots a JVM to print one line.
+
+Three separate callers need that list, and it cached nothing, so opening a
+single Java file ran the whole probe **four times**:
+
+| | Before | After |
+|---|---|---|
+| Subprocesses per Java buffer | 13 | **4** |
+| `nvim Main.java` | 762 ms | **196 ms** |
+
+The fix is one memo: the set of installed JDKs cannot change while Neovim is
+running. `:JdtlsRescanJDKs` busts it if you install one mid-session. Verified
+identical behaviour afterwards — same launcher (Zulu 21), same runtimes
+(JavaSE-21, JavaSE-17), JDK 26 still correctly excluded by `MAX_EE`.
+
+**The lesson generalises:** anything calling `vim.fn.system()` on a buffer event
+should be assumed to run more often than you think, and cached unless the answer
+can actually change between calls.
+
+### Opening files: cold vs warm
+
+The one number that looks alarming and is not. Each language pays a **once per
+session** cost the first time you open a file of that type — lazy.nvim loading
+its plugins plus the treesitter parser `.so`. Every file after that is cheap.
+
+Measured in a **separate nvim instance per language**, so no ordering bias:
+
+| Language | Cold (1st of session) | Warm (every one after) |
+|---|---|---|
+| TypeScript | 91.6 ms | **3.1 ms** |
+| TSX | 110.7 ms | **4.0 ms** |
+| HTML | 24.7 ms | — |
+| CSS / SCSS | 24.2 ms | **5.3 ms** |
+| Python | 93.6 ms | — |
+| C++ | 126.0 ms | — |
+
+**Navigation is not slow — first contact is.** If you measure by opening one
+file of each type in one session you will read the cold column and conclude the
+config is sluggish; open a second file of the same type and it is 3–5 ms.
+
+### LSP attach does not block
+
+Time from buffer open to each client attaching:
+
+| File | Buffer open | Clients attach at |
+|---|---|---|
+| `a.ts` | 93.7 ms | `ts_ls` @ 189 ms |
+| `App.tsx` | 135.4 ms | `emmet_language_server` @ 217 ms, `ts_ls` @ 221 ms |
+| `i.html` | 34.2 ms | `emmet_language_server` @ 132 ms, `html` @ 295 ms |
+| `s.scss` | 35.3 ms | `emmet_language_server` @ 115 ms, `cssls` @ 196 ms |
+| `m.py` | 145.2 ms | `pyright` @ 246 ms |
+| `m.cpp` | 147.2 ms | `clangd` @ 206 ms |
+
+Attach happens **after** the buffer is open and editable — it is asynchronous,
+and the editor is responsive throughout. This is why adding two servers changed
+nothing: an A/B with `emmet_language_server` and `angularls` disabled put the
+difference **inside the ±2 ms noise floor** on every filetype tested.
+
+> **Measurement caveat.** All of the above is `--headless`, which has no
+> redraw. Keystroke and cursor figures are the cost of *processing* input, not
+> of painting a frame — they are a lower bound on what you perceive, and
+> scrolling cost cannot be measured this way at all. They are still the right
+> numbers for comparing config changes against each other, which is what they
+> are used for here.
 
 ---
 
@@ -84,6 +178,9 @@ and file sorters — that is the native fuzzy matcher rather than the Lua one.
 [`options.lua`](options.md)'s `mkview`/`loadview` autocmds persist folds and
 cursor position, but they do **file I/O on every buffer switch**. They are scoped
 to real, writable files *and* skip `vim.b.bigfile` buffers.
+
+Measured cost: **0.30 ms** per switch, rising to **3.24 ms** once a 5 000-line
+buffer is in the ring — see [Responsiveness, measured](#responsiveness-measured).
 
 ### Large files
 

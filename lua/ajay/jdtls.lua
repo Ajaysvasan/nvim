@@ -98,7 +98,26 @@ local function probe_version(home)
   return tonumber(major)
 end
 
+-- MEMOISED, and it has to be. This function shells out: one
+-- `/usr/libexec/java_home -V`, plus a `java -version` per candidate whose
+-- version cannot be read any other way. On this machine a single call was
+-- 1 java_home + 2 java spawns, and `java -version` costs ~150 ms because it
+-- boots a JVM to print one line.
+--
+-- It is called from detect_runtimes(), launcher_java() and :AjayDoctor, so an
+-- uncached version ran the whole probe FOUR times per Java buffer opened --
+-- 13 subprocesses, ~760 ms of blocking work before the file was editable, and
+-- all four passes returned exactly the same answer.
+--
+-- The set of installed JDKs does not change while Neovim is running. Cache it
+-- for the session; :JdtlsRescanJDKs busts it after installing a new JDK.
+local cached_jdks = nil
+
 local function java_home_candidates()
+  if cached_jdks then
+    return cached_jdks
+  end
+
   local c = {}
   local seen = {}
 
@@ -173,11 +192,28 @@ local function java_home_candidates()
     add(nil, vim.env.JAVA_HOME)
   end
 
+  cached_jdks = c
   return c
 end
 
 -- Exposed so :AjayDoctor can show exactly what was found.
 M.detected_jdks = java_home_candidates
+
+-- Drop the cache above. Needed only after installing or removing a JDK
+-- mid-session -- otherwise the scan result is stable for the whole session.
+vim.api.nvim_create_user_command("JdtlsRescanJDKs", function()
+  cached_jdks = nil
+  local found = java_home_candidates()
+  local lines = {}
+  for _, e in ipairs(found) do
+    table.insert(lines, ("  %-4s %s"):format(e[1], e[2]))
+  end
+  vim.notify(
+    ("Rescanned. %d JDK%s found:\n%s"):format(#found, #found == 1 and "" or "s", table.concat(lines, "\n")),
+    vim.log.levels.INFO,
+    { title = "jdtls" }
+  )
+end, { desc = "Re-scan installed JDKs (after installing a new one)" })
 
 -- Every JDK we can find, as jdtls `runtimes` entries. This is what lets
 -- you run jdtls on 21 while a project still compiles against 17.

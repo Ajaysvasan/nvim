@@ -37,6 +37,10 @@ local ensure_installed = {
   "tsx",
   "html",
   "css",
+  "scss", -- conform formats it and cssls attaches to it; without the
+  -- parser scss was the one web filetype falling back to regex syntax
+  "angular", -- .component.html resolves to filetype `htmlangular`, which
+  -- maps to the `angular` language, NOT `html`
   "json",
   "lua",
   "luadoc",
