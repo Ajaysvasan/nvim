@@ -2,7 +2,7 @@
 -- IntelliJ-style Java file creation with floating GUI
 -- Flow: pick directory -> pick type -> name it -> create
 -- Drop in: lua/ajay/java-creator.lua
--- Require in init.lua: require("ajay.java-creator")
+-- Wired up from the nvim-jdtls spec in plugins.lua (ft = "java").
 
 local M = {}
 
@@ -1110,13 +1110,27 @@ function M.open()
 	end)
 end
 
-vim.keymap.set("n", "<leader>jn", M.open, {
-	desc = "Java: New file (IntelliJ-style)",
-	silent = true,
-})
+-- Registration moved into setup() so this module matches every other one
+-- in the config and can go through plugins.lua's setup_module() wrapper,
+-- which reports WHICH file failed instead of "attempt to index a boolean".
+-- It also means requiring the module has no side effects.
+function M.setup()
+	-- COLLISION FIX: this was <leader>jn, which jdtls.lua also maps -- to
+	-- "test nearest method", buffer-locally, in exactly the Java buffers
+	-- where you would want the file creator. Buffer-local mappings beat
+	-- global ones, so jdtls silently won and this never fired.
+	--
+	-- jdtls keeps <leader>jn (running the nearest test is the more frequent
+	-- action and the binding is long-established); the creator takes the
+	-- shifted variant.
+	vim.keymap.set("n", "<leader>jN", M.open, {
+		desc = "Java: New file (IntelliJ-style)",
+		silent = true,
+	})
 
-vim.api.nvim_create_user_command("JavaNew", M.open, {
-	desc = "Open Java file creator GUI",
-})
+	vim.api.nvim_create_user_command("JavaNew", M.open, {
+		desc = "Open Java file creator GUI",
+	})
+end
 
 return M

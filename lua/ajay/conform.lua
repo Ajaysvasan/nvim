@@ -54,7 +54,10 @@ function M.setup()
 
       return {
         timeout_ms = 3000,
-        lsp_fallback = true, -- Use LSP if no formatter found
+        -- `lsp_fallback = true` is the legacy spelling; conform maps it to
+        -- this internally. Written out so it doesn't silently change
+        -- meaning when the shim eventually goes.
+        lsp_format = "fallback",
       }
     end,
 
@@ -80,6 +83,37 @@ function M.setup()
       black = {
         prepend_args = { "--line-length", "88" },
       },
+
+      -- ── THE IMPORT-DELETION FIX ──────────────────────────────────
+      --
+      -- google-java-format rewrites imports BY DEFAULT. Two separate
+      -- behaviours, both on unless you turn them off:
+      --   * removes imports it thinks are unused
+      --   * re-sorts the remaining ones
+      --
+      -- The problem is that it does this with NO CLASSPATH, looking at
+      -- one file in isolation. It deletes any import whose simple name
+      -- it can't find an AST reference to in that single file. It has no
+      -- idea what Lombok generates, what a wildcard import pulls in, or
+      -- what another module in your project defines.
+      --
+      -- jdtls has the full project classpath and knows the truth. So on
+      -- every save, the dumber tool was overwriting the smarter one.
+      --
+      -- Sorting is disabled for the same reason: gjf sorts ASCIIbetically
+      -- into a single block, while jdtls uses the importOrder you set in
+      -- jdtls.lua (java, javax, jakarta, org, com). They disagreed, so
+      -- your imports got reshuffled on every write.
+      --
+      -- Net effect: google-java-format now only touches whitespace and
+      -- line breaks. Imports belong to jdtls — use <leader>jo to organize
+      -- them deliberately.
+      ["google-java-format"] = {
+        prepend_args = {
+          "--skip-removing-unused-imports",
+          "--skip-sorting-imports",
+        },
+      },
     },
   })
 
@@ -93,7 +127,7 @@ function M.setup()
         ["end"] = { args.line2, end_line:len() },
       }
     end
-    require("conform").format({ async = true, lsp_fallback = true, range = range })
+    require("conform").format({ async = true, lsp_format = "fallback", range = range })
   end, { range = true })
 
   -- Toggle format on save
@@ -133,7 +167,7 @@ function M.setup()
 
   -- Keymaps
   vim.keymap.set({ "n", "v" }, "<leader>lf", function()
-    require("conform").format({ async = true, lsp_fallback = true })
+    require("conform").format({ async = true, lsp_format = "fallback" })
   end, { desc = "Format buffer or range" })
 
   vim.keymap.set("n", "<leader>tf", ":ToggleFormatOnSave<CR>", {

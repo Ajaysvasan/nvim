@@ -16,11 +16,38 @@ local ok_vtext, dap_vtext = pcall(require, "nvim-dap-virtual-text")
 -- =============================================================================
 -- SIGNS (shown in the gutter)
 -- =============================================================================
-vim.fn.sign_define("DapBreakpoint", { text = "●", texthl = "DiagnosticError", linehl = "", numhl = "" })
-vim.fn.sign_define("DapBreakpointCondition", { text = "◐", texthl = "DiagnosticWarning", linehl = "", numhl = "" })
-vim.fn.sign_define("DapLogPoint", { text = "◆", texthl = "DiagnosticInfo", linehl = "", numhl = "" })
-vim.fn.sign_define("DapStopped", { text = "▶", texthl = "DiagnosticOk", linehl = "DapStoppedLine", numhl = "" })
-vim.fn.sign_define("DapBreakpointRejected", { text = "✗", texthl = "DiagnosticError", linehl = "", numhl = "" })
+-- These five survived (they are plain Unicode, not Private Use Area),
+-- but routing them through ajay.icons keeps every glyph in one place.
+local ok_icons, iconmod = pcall(require, "ajay.icons")
+local dapicons = ok_icons and iconmod.dap
+  or {
+    breakpoint = "B",
+    breakpoint_condition = "C",
+    log_point = "L",
+    stopped = ">",
+    rejected = "X",
+    pause = "||",
+    play = ">",
+    step_into = "I",
+    step_over = "O",
+    step_out = "U",
+    step_back = "<",
+  }
+
+vim.fn.sign_define("DapBreakpoint", { text = dapicons.breakpoint, texthl = "DiagnosticError", linehl = "", numhl = "" })
+vim.fn.sign_define(
+  "DapBreakpointCondition",
+  { text = dapicons.breakpoint_condition, texthl = "DiagnosticWarn", linehl = "", numhl = "" }
+)
+vim.fn.sign_define("DapLogPoint", { text = dapicons.log_point, texthl = "DiagnosticInfo", linehl = "", numhl = "" })
+vim.fn.sign_define(
+  "DapStopped",
+  { text = dapicons.stopped, texthl = "DiagnosticOk", linehl = "DapStoppedLine", numhl = "" }
+)
+vim.fn.sign_define(
+  "DapBreakpointRejected",
+  { text = dapicons.rejected, texthl = "DiagnosticError", linehl = "", numhl = "" }
+)
 
 -- Highlight for the current stopped line
 vim.api.nvim_set_hl(0, "DapStoppedLine", { bg = "#2d3149" })
@@ -68,12 +95,14 @@ if ok_dapui then
       enabled = true,
       element = "repl",
       icons = {
-        pause = "",
-        play = "",
-        step_into = "",
-        step_over = "",
-        step_out = "",
-        step_back = "",
+        -- These were all empty strings: the glyphs were stripped, so
+        -- every dap-ui control button rendered blank.
+        pause = dapicons.pause,
+        play = dapicons.play,
+        step_into = dapicons.step_into,
+        step_over = dapicons.step_over,
+        step_out = dapicons.step_out,
+        step_back = dapicons.step_back,
         run_last = "↺",
         terminate = "□",
         disconnect = "⏏",

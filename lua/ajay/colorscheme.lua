@@ -1,97 +1,66 @@
--- vim.cmd("colorscheme gruvbox")
+-- lua/ajay/colorscheme.lua
+--
+-- FIX: the old file ended with `vim.cmd.colorscheme("catppuccin-nvim")`.
+-- That colorscheme does not exist. Catppuccin registers:
+--   catppuccin, catppuccin-latte, catppuccin-frappe,
+--   catppuccin-macchiato, catppuccin-mocha
+-- so the old call raised E185 and Neovim silently fell back to `default`,
+-- which is a big part of why the Mac looked wrong.
 
--- vim.cmd([[
---   highlight Normal guibg=NONE ctermbg=NONE
---   highlight NonText guibg=NONE ctermbg=NONE
---   highlight LineNr guibg=NONE ctermbg=NONE
---   highlight SignColumn guibg=NONE ctermbg=NONE
---   highlight EndOfBuffer guibg=NONE ctermbg=NONE
-
---   " Neo-tree/NvimTree transparency
---   highlight NeoTreeNormal guibg=NONE ctermbg=NONE
---   highlight NeoTreeNormalNC guibg=NONE ctermbg=NONE
---   highlight NvimTreeNormal guibg=NONE ctermbg=NONE
---   highlight NvimTreeNormalNC guibg=NONE ctermbg=NONE
--- ]])
 require("catppuccin").setup({
-	flavour = "frappe", -- latte, frappe, macchiato, mocha
-	background = { -- :h background
-		light = "latte",
-		dark = "mocha",
-	},
-	transparent_background = false, -- disables setting the background color.
-	float = {
-		transparent = false, -- enable transparent floating windows
-		solid = false, -- use solid styling for floating windows, see |winborder|
-	},
-	term_colors = false, -- sets terminal colors (e.g. `g:terminal_color_0`)
-	dim_inactive = {
-		enabled = false, -- dims the background color of inactive window
-		shade = "dark",
-		percentage = 0.15, -- percentage of the shade to apply to the inactive window
-	},
-	no_italic = false, -- Force no italic
-	no_bold = false, -- Force no bold
-	no_underline = false, -- Force no underline
-	styles = { -- Handles the styles of general hi groups (see `:h highlight-args`):
-		comments = { "italic" }, -- Change the style of comments
-		conditionals = { "italic" },
-		loops = {},
-		functions = {},
-		keywords = {},
-		strings = {},
-		variables = {},
-		numbers = {},
-		booleans = {},
-		properties = {},
-		types = {},
-		operators = {},
-		-- miscs = {}, -- Uncomment to turn off hard-coded styles
-	},
-	lsp_styles = { -- Handles the style of specific lsp hl groups (see `:h lsp-highlight`).
-		virtual_text = {
-			errors = { "italic" },
-			hints = { "italic" },
-			warnings = { "italic" },
-			information = { "italic" },
-			ok = { "italic" },
-		},
-		underlines = {
-			errors = { "underline" },
-			hints = { "underline" },
-			warnings = { "underline" },
-			-- information = { "underline" },
-			-- ok = { "underline" },
-		},
-		inlay_hints = {
-			background = true,
-		},
-	},
-	color_overrides = {},
-	custom_highlights = {},
-	default_integrations = true,
-	auto_integrations = false,
-	integrations = {
-		cmp = true,
-		gitsigns = true,
-		nvimtree = true,
-		notify = false,
-		mini = {
-			enabled = true,
-			indentscope_color = "",
-		},
-		-- For more plugins integrations please scroll down (https://github.com/catppuccin/nvim#integrations)
-	},
+  flavour = "frappe", -- latte, frappe, macchiato, mocha
+  background = { light = "latte", dark = "mocha" },
+  -- Driven by ajay/transparency.lua, which flips this global and then
+  -- re-requires this file. Using catppuccin's own option means the THEME
+  -- decides which groups lose their background -- all of them, correctly --
+  -- instead of a hand-maintained list of 20 highlight groups that drifts
+  -- every time a plugin is added.
+  transparent_background = vim.g.transparent_background == true,
+  float = { transparent = vim.g.transparent_background == true, solid = false },
+  term_colors = true,
+  dim_inactive = { enabled = false, shade = "dark", percentage = 0.15 },
+  no_italic = false,
+  no_bold = false,
+  no_underline = false,
+  styles = {
+    comments = { "italic" },
+    conditionals = { "italic" },
+  },
+  color_overrides = {},
+  custom_highlights = {},
+  -- PERF: `default_integrations` is not an option in current catppuccin --
+  -- it was renamed `auto_integrations`, so the old line was dead config and
+  -- detection ran regardless.
+  --
+  -- auto_integrations scans every installed plugin to guess which
+  -- integrations to switch on. It costs ~2.9ms of eager startup, and on
+  -- this config it finds exactly ONE thing the explicit list below did not
+  -- already cover: rainbow_delimiters. So it is listed by hand and the scan
+  -- is off.
+  --
+  -- TRADE-OFF: adding a new plugin no longer themes it automatically. If
+  -- something looks unstyled after installing a plugin, add its integration
+  -- to the list below (`:h catppuccin-integrations`), or flip this back to
+  -- true and take the 2.9ms.
+  auto_integrations = false,
+  integrations = {
+    rainbow_delimiters = true, -- was picked up by auto_integrations
+    cmp = true,
+    gitsigns = true,
+    neotree = true, -- was `nvimtree` — you use neo-tree, not nvim-tree,
+    -- so the tree never got themed highlights.
+    telescope = { enabled = true },
+    treesitter = true,
+    harpoon = true,
+    alpha = true,
+    dap = true,
+    dap_ui = true,
+    indent_blankline = { enabled = true },
+    mason = true,
+    native_lsp = { enabled = true },
+    notify = false,
+    mini = { enabled = true, indentscope_color = "" },
+  },
 })
 
--- setup must be called before loading
-vim.cmd.colorscheme("catppuccin-nvim")
--- require("vscode").setup({
---   transparent = false,
---   italic_comments = true,
---   disable_nvimtree_bg = true,
---   color_overrides = {},
---   group_overrides = {},
--- })
-
--- vim.cmd("colorscheme vscode")
+vim.cmd.colorscheme("catppuccin-frappe")

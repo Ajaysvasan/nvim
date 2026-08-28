@@ -1,68 +1,65 @@
 -- lua/ajay/transparency.lua
+--
+-- Toggle a transparent background, so the terminal's own background
+-- (wallpaper, blur, whatever) shows through Neovim.
+--
+-- REWRITTEN. The old version had two problems:
+--
+--  1. It hand-listed ~20 highlight groups and cleared `guibg` on each
+--     (Normal, NormalFloat, NeoTree*, Telescope*, WhichKeyFloat...). That
+--     list drifts out of date the moment you add a plugin, and it fights
+--     `:colorscheme`, which resets every group.
+--  2. Turning transparency OFF restored a hardcoded `guibg=#1e1e1e`, which
+--     is not a Catppuccin Frappe colour. Toggling off left you with a
+--     background that did not match the theme.
+--
+-- Catppuccin already implements this properly via `transparent_background`.
+-- So this module just flips a global and re-applies the colorscheme, and
+-- the theme handles every group it knows about -- including ones added
+-- later.
+--
+-- It does NOT change your appearance at load time. Transparency starts
+-- off; nothing happens until you press <leader>tt.
 
 local M = {}
 
+local function apply()
+  -- Re-run colorscheme.lua from scratch so catppuccin.setup() sees the new
+  -- flag. Clearing the package cache is what makes the re-require actually
+  -- execute rather than return the cached module.
+  package.loaded["ajay.colorscheme"] = nil
+  local ok, err = pcall(require, "ajay.colorscheme")
+  if not ok then
+    vim.notify("Failed to re-apply colorscheme:\n" .. tostring(err), vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
+function M.toggle()
+  vim.g.transparent_background = not vim.g.transparent_background
+  if not apply() then
+    -- Roll back so the flag never disagrees with what is on screen.
+    vim.g.transparent_background = not vim.g.transparent_background
+    return
+  end
+  vim.notify(
+    "Transparency: " .. (vim.g.transparent_background and "ON" or "OFF"),
+    vim.log.levels.INFO,
+    { title = "transparency" }
+  )
+end
+
 function M.setup()
-	-- Make background transparent
-	vim.cmd([[
-		highlight Normal guibg=NONE ctermbg=NONE
-		highlight NormalNC guibg=NONE ctermbg=NONE
-		highlight SignColumn guibg=NONE ctermbg=NONE
-		highlight NormalFloat guibg=NONE ctermbg=NONE
-		highlight FloatBorder guibg=NONE ctermbg=NONE
-		highlight Pmenu guibg=NONE ctermbg=NONE
-		highlight CursorLine guibg=NONE ctermbg=NONE
-		highlight CursorLineNr guibg=NONE ctermbg=NONE
-		highlight LineNr guibg=NONE ctermbg=NONE
-		highlight Folded guibg=NONE ctermbg=NONE
-		highlight NonText guibg=NONE ctermbg=NONE
-		highlight SpecialKey guibg=NONE ctermbg=NONE
-		highlight VertSplit guibg=NONE ctermbg=NONE
-		highlight EndOfBuffer guibg=NONE ctermbg=NONE
-		
-		" Plugin specific
-		highlight NeoTreeNormal guibg=NONE ctermbg=NONE
-		highlight NeoTreeNormalNC guibg=NONE ctermbg=NONE
-		highlight NeoTreeEndOfBuffer guibg=NONE ctermbg=NONE
-		highlight TelescopeNormal guibg=NONE ctermbg=NONE
-		highlight TelescopeBorder guibg=NONE ctermbg=NONE
-		highlight WhichKeyFloat guibg=NONE ctermbg=NONE
-	]])
+  -- Registration only. No highlight changes, no notification at startup.
+  vim.api.nvim_create_user_command("ToggleTransparency", M.toggle, {
+    desc = "Toggle transparent background",
+  })
 
-	-- Toggle transparency function
-	local transparency_enabled = true
-
-	local function toggle_transparency()
-		if transparency_enabled then
-			-- Disable transparency (restore background)
-			vim.cmd([[
-				highlight Normal guibg=#1e1e1e ctermbg=234
-				highlight NormalNC guibg=#1e1e1e ctermbg=234
-				highlight SignColumn guibg=#1e1e1e ctermbg=234
-				highlight NeoTreeNormal guibg=#1e1e1e ctermbg=234
-			]])
-			transparency_enabled = false
-			vim.notify("Transparency: OFF", vim.log.levels.INFO)
-		else
-			-- Enable transparency
-			M.setup()
-			transparency_enabled = true
-			vim.notify("Transparency: ON", vim.log.levels.INFO)
-		end
-	end
-
-	-- Command to toggle
-	vim.api.nvim_create_user_command("ToggleTransparency", toggle_transparency, {
-		desc = "Toggle transparent background",
-	})
-
-	-- Keymap
-	vim.keymap.set("n", "<leader>tt", toggle_transparency, {
-		desc = "Toggle transparency",
-		silent = true,
-	})
-
-	vim.notify("✓ Transparency enabled. Use <leader>tt to toggle", vim.log.levels.INFO)
+  vim.keymap.set("n", "<leader>tt", M.toggle, {
+    desc = "Toggle transparency",
+    silent = true,
+  })
 end
 
 return M

@@ -604,6 +604,11 @@ function M.setup()
 	dashboard.section.header.opts.hl = logo.hl or "DashTitle"
 
 	-- ── buttons
+	-- NOTE: there used to be a "Sessions" button here calling
+	-- require('persistence').load(). persistence.nvim is not in the plugin
+	-- list, so pressing it raised "module 'persistence' not found". Removed
+	-- rather than left as a trap; if you want session restore, add
+	-- folke/persistence.nvim to plugins.lua and put the button back.
 	dashboard.section.buttons.val = {
 		dashboard.button("SPC f f", "󰍉  Find File", "<cmd>Telescope find_files<CR>"),
 		dashboard.button("SPC f r", "  Recent Files", "<cmd>Telescope oldfiles<CR>"),
@@ -611,7 +616,6 @@ function M.setup()
 		dashboard.button("SPC f b", "  Buffers", "<cmd>Telescope buffers<CR>"),
 		dashboard.button("SPC g s", "  Git Status", "<cmd>Telescope git_status<CR>"),
 		dashboard.button("SPC l  ", "  LSP Info", "<cmd>LspInfo<CR>"),
-		dashboard.button("SPC s s", "  Sessions", "<cmd>lua require('persistence').load()<CR>"),
 		dashboard.button("n      ", "  New File", "<cmd>ene <BAR> startinsert<CR>"),
 		dashboard.button("c      ", "  Neovim Config", "<cmd>e ~/.config/nvim/init.lua<CR>"),
 		dashboard.button("l      ", "󰒲  Lazy", "<cmd>Lazy<CR>"),

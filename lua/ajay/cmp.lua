@@ -110,6 +110,27 @@ luasnip.add_snippets("javascript", jsx_snippets)
 luasnip.add_snippets("typescript", jsx_snippets)
 
 cmp.setup({
+  -- ── PERF ─────────────────────────────────────────────────────────
+  -- Completion is the hottest path in the editor: it runs on nearly every
+  -- keystroke in insert mode. Defaults are tuned for small buffers; Java
+  -- and Spring produce candidate lists in the thousands, where the cost is
+  -- dominated by SORTING and RENDERING entries you will never scroll to.
+  performance = {
+    debounce = 30, -- was 60: time from keystroke to asking sources
+    throttle = 20, -- was 30: min gap between filter/sort passes
+    -- Stop waiting on a slow source rather than stalling the menu. jdtls
+    -- can take seconds on a cold project; the menu should show whatever
+    -- the fast sources returned instead of hanging.
+    fetching_timeout = 200, -- was 500
+    max_view_entries = 30, -- was 200: render cost is per visible entry
+  },
+
+  -- Do not open the menu at all for a bare `.` or a single character in a
+  -- huge candidate set -- wait until there is something to filter on.
+  completion = {
+    keyword_length = 1,
+  },
+
   snippet = {
     expand = function(args)
       luasnip.lsp_expand(args.body)
@@ -154,7 +175,28 @@ cmp.setup({
     { name = "nvim_lsp", priority = 1000 },
     { name = "luasnip", priority = 750 },
     { name = "path", priority = 500 },
-    { name = "buffer", priority = 250, keyword_length = 3 },
+    {
+      name = "buffer",
+      priority = 250,
+      keyword_length = 3,
+      option = {
+        -- Default is the current buffer only. Indexing every listed buffer
+        -- is a common "make it smarter" tweak that quietly turns into a
+        -- full re-scan of every open file; cap it at what is VISIBLE so a
+        -- session with 30 buffers open does not pay for all of them.
+        get_bufnrs = function()
+          local bufs = {}
+          for _, win in ipairs(vim.api.nvim_list_wins()) do
+            local buf = vim.api.nvim_win_get_buf(win)
+            -- Skip anything big enough that scanning it would stutter.
+            if not vim.b[buf].bigfile then
+              bufs[buf] = true
+            end
+          end
+          return vim.tbl_keys(bufs)
+        end,
+      },
+    },
   }),
 
   formatting = {

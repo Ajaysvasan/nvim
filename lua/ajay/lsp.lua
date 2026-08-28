@@ -1,311 +1,367 @@
 -- lua/ajay/lsp.lua
+--
+-- Rewritten for the Neovim 0.11+ LSP API. Key fixes:
+--
+--  1. `client.supports_method(...)` (dot) -> `client:supports_method(...)` (colon)
+--     The dot form is deprecated in 0.11 and REMOVED in 0.12. Homebrew's
+--     Neovim is almost always newer than what a distro repo ships, so this
+--     is the single most likely source of the "ton of errors" on the Mac.
+--  2. One `LspAttach` autocmd instead of an `on_attach` copy-pasted into
+--     every server table.
+--  3. Only override what needs overriding. nvim-lspconfig ships `cmd` and
+--     `root_markers` for every one of these servers in its own `lsp/`
+--     directory; hardcoding `cmd` meant a Mason-installed binary that
+--     wasn't on PATH yet would silently fail to start.
+--  4. `vim.diagnostic.goto_next/goto_prev` -> `vim.diagnostic.jump`.
+--  5. Removed the custom `LspRestart` command — 0.11 ships one, and
+--     redefining it shadowed the built-in.
 
-local mason = require("mason")
-local mason_lspconfig = require("mason-lspconfig")
+-- ── Diagnostics ────────────────────────────────────────────────────
+-- Glyphs come from ajay.icons, which builds them from codepoints rather
+-- than embedding the characters. The literals that used to be here were
+-- stripped to empty strings somewhere in a copy, and an empty sign text
+-- renders NOTHING in the gutter without raising an error -- diagnostics
+-- silently stop appearing.
+-- Soft dependency on purpose. lsp.lua drives EVERY language server, so a
+-- missing ajay/icons.lua must not take all of them down -- it should cost
+-- you pretty gutter symbols, nothing more.
+local ok_icons, icons = pcall(require, "ajay.icons")
+if not ok_icons then
+  icons = { diagnostics = { ERROR = "E", WARN = "W", INFO = "I", HINT = "H" } }
+  vim.schedule(function()
+    vim.notify("ajay/icons.lua not found - using ASCII diagnostic signs", vim.log.levels.WARN)
+  end)
+end
 
--- Try to load mason-tool-installer (optional)
-local mason_tool_installer_ok, mason_tool_installer = pcall(require, "mason-tool-installer")
-
--- Configure diagnostics display with new API
 vim.diagnostic.config({
-	signs = {
-		text = {
-			[vim.diagnostic.severity.ERROR] = "✘",
-			[vim.diagnostic.severity.WARN] = "▲",
-			[vim.diagnostic.severity.HINT] = "⚑",
-			[vim.diagnostic.severity.INFO] = "»",
-		},
-	},
-	virtual_text = {
-		severity = vim.diagnostic.severity.ERROR,
-		spacing = 2,
-	},
-	float = {
-		border = "rounded",
-		source = "always",
-	},
-	severity_sort = true,
-	update_in_insert = false,
+  signs = {
+    text = {
+      [vim.diagnostic.severity.ERROR] = icons.diagnostics.ERROR,
+      [vim.diagnostic.severity.WARN] = icons.diagnostics.WARN,
+      [vim.diagnostic.severity.HINT] = icons.diagnostics.HINT,
+      [vim.diagnostic.severity.INFO] = icons.diagnostics.INFO,
+    },
+  },
+  virtual_text = {
+    severity = { min = vim.diagnostic.severity.ERROR },
+    spacing = 2,
+  },
+  float = { border = "rounded", source = true },
+  severity_sort = true,
+  update_in_insert = false,
 })
 
--- Servers to install
+-- ── Mason ──────────────────────────────────────────────────────────
 local ensure_servers = {
-	"pyright",
-	"clangd",
-	"jdtls",
-	"ts_ls",
-	"eslint",
-	"html",
-	"cssls",
-	"lua_ls",
-	"tailwindcss",
+  "pyright",
+  "clangd",
+  "jdtls",
+  "ts_ls",
+  "eslint",
+  "html",
+  "cssls",
+  "lua_ls",
+  "tailwindcss",
 }
 
--- Tools to install
 local ensure_tools = {
-	"prettier",
-	"eslint_d",
-	"clang-format",
-	"black",
-	"isort",
-	"stylua",
+  "prettier",
+  "eslint_d",
+  "clang-format",
+  "black",
+  "isort",
+  "stylua",
+  "google-java-format",
+  "shfmt",
 }
 
--- Setup Mason
-mason.setup({
-	ui = {
-		border = "rounded",
-	},
-})
+-- Deliberately NOT called at load time -- see "Mason, on demand" at the
+-- bottom of this file. Building the mason registry costs ~12ms on every
+-- startup that opens a file, to do work that only matters when something
+-- actually needs installing.
+local function setup_mason()
+  require("mason").setup({ ui = { border = "rounded" } })
 
-mason_lspconfig.setup({
-	ensure_installed = ensure_servers,
-	automatic_installation = true,
-})
+  local mlc_ok, mlc = pcall(require, "mason-lspconfig")
+  if mlc_ok then
+    mlc.setup({
+      ensure_installed = ensure_servers,
+      -- mason-lspconfig v2 renamed this. `automatic_installation` is a
+      -- no-op now; `automatic_enable` is what calls vim.lsp.enable() for
+      -- you, and it is what picks a server up once it has been installed.
+      -- jdtls is excluded because nvim-jdtls owns it.
+      automatic_enable = { exclude = { "jdtls" } },
+    })
+  end
 
--- Setup mason-tool-installer only if available
-if mason_tool_installer_ok then
-	mason_tool_installer.setup({
-		ensure_installed = ensure_tools,
-		auto_update = true,
-		run_on_start = true,
-	})
+  local mti_ok, mti = pcall(require, "mason-tool-installer")
+  if mti_ok then
+    mti.setup({
+      ensure_installed = ensure_tools,
+      auto_update = false, -- was true: this fires a network job on every start
+      run_on_start = true,
+    })
+  end
 end
 
--- Get capabilities for LSP
+-- ── Capabilities ───────────────────────────────────────────────────
 local capabilities = vim.lsp.protocol.make_client_capabilities()
-local cmp_nvim_lsp_ok, cmp_nvim_lsp = pcall(require, "cmp_nvim_lsp")
-if cmp_nvim_lsp_ok then
-	capabilities = cmp_nvim_lsp.default_capabilities(capabilities)
+local cmp_ok, cmp_nvim_lsp = pcall(require, "cmp_nvim_lsp")
+if cmp_ok then
+  capabilities = cmp_nvim_lsp.default_capabilities(capabilities)
 end
 
--- Enhanced on_attach with better keymaps
-local on_attach = function(client, bufnr)
-	local buf_map = function(mode, lhs, rhs, opts)
-		opts = vim.tbl_extend("force", { noremap = true, silent = true, buffer = bufnr }, opts or {})
-		vim.keymap.set(mode, lhs, rhs, opts)
-	end
+-- Applies to every server, including ones Mason enables automatically.
+vim.lsp.config("*", { capabilities = capabilities })
 
-	-- Navigation
-	buf_map("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
-	buf_map("n", "gD", vim.lsp.buf.declaration, { desc = "Go to declaration" })
-	buf_map("n", "gr", vim.lsp.buf.references, { desc = "Go to references" })
-	buf_map("n", "gi", vim.lsp.buf.implementation, { desc = "Go to implementation" })
-	buf_map("n", "gt", vim.lsp.buf.type_definition, { desc = "Go to type definition" })
+-- ── Per-server overrides ───────────────────────────────────────────
+vim.lsp.config("clangd", {
+  cmd = {
+    "clangd",
+    "--background-index",
+    "--clang-tidy",
+    "--completion-style=detailed",
+    "--header-insertion=iwyu",
+  },
+})
 
-	-- Hover and help
-	buf_map("n", "K", vim.lsp.buf.hover, { desc = "Hover documentation" })
-	buf_map("n", "<C-k>", vim.lsp.buf.signature_help, { desc = "Signature help" })
+vim.lsp.config("pyright", {
+  settings = {
+    python = {
+      analysis = {
+        typeCheckingMode = "basic",
+        useLibraryCodeForTypes = true,
+        autoSearchPaths = true,
+        diagnosticMode = "workspace",
+      },
+    },
+  },
+})
 
-	-- Code actions
-	buf_map("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
-	buf_map({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, { desc = "Code action" })
-	buf_map("n", "<leader>lf", function()
-		vim.lsp.buf.format({ async = true })
-	end, { desc = "Format buffer" })
+vim.lsp.config("lua_ls", {
+  settings = {
+    Lua = {
+      runtime = { version = "LuaJIT" },
+      diagnostics = { globals = { "vim" } },
+      workspace = {
+        library = vim.api.nvim_get_runtime_file("", true),
+        checkThirdParty = false,
+      },
+      telemetry = { enable = false },
+    },
+  },
+})
 
-	-- Diagnostics
-	buf_map("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnostic" })
-	buf_map("n", "]d", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
-	buf_map("n", "<leader>e", vim.diagnostic.open_float, { desc = "Show diagnostic" })
-	buf_map("n", "<leader>q", vim.diagnostic.setloclist, { desc = "Diagnostic list" })
+vim.lsp.config("tailwindcss", {
+  settings = {
+    tailwindCSS = {
+      classAttributes = { "class", "className", "classList", "ngClass" },
+      lint = {
+        cssConflict = "warning",
+        invalidApply = "error",
+        invalidConfigPath = "error",
+        invalidScreen = "error",
+        invalidTailwindDirective = "error",
+        invalidVariant = "error",
+        recommendedVariantOrder = "warning",
+      },
+      validate = true,
+    },
+  },
+})
 
-	-- Workspace
-	buf_map("n", "<leader>wa", vim.lsp.buf.add_workspace_folder, { desc = "Add workspace folder" })
-	buf_map("n", "<leader>wr", vim.lsp.buf.remove_workspace_folder, { desc = "Remove workspace folder" })
-	buf_map("n", "<leader>wl", function()
-		print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
-	end, { desc = "List workspace folders" })
+-- ── Shared attach behaviour ────────────────────────────────────────
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("ajay_lsp_attach", { clear = true }),
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+    if not client then
+      return
+    end
+    local bufnr = ev.buf
 
-	-- Enable inlay hints if supported
-	if client.supports_method("textDocument/inlayHint") and vim.lsp.inlay_hint then
-		vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
-	end
+    local function map(mode, lhs, rhs, desc)
+      vim.keymap.set(mode, lhs, rhs, { buffer = bufnr, silent = true, desc = desc })
+    end
+
+    -- Navigation
+    map("n", "gd", vim.lsp.buf.definition, "Go to definition")
+    map("n", "gD", vim.lsp.buf.declaration, "Go to declaration")
+    map("n", "gr", vim.lsp.buf.references, "Go to references")
+    map("n", "gi", vim.lsp.buf.implementation, "Go to implementation")
+    map("n", "gt", vim.lsp.buf.type_definition, "Go to type definition")
+
+    -- Docs
+    map("n", "K", vim.lsp.buf.hover, "Hover documentation")
+    map("n", "<C-k>", vim.lsp.buf.signature_help, "Signature help")
+
+    -- Actions
+    map("n", "<leader>rn", vim.lsp.buf.rename, "Rename symbol")
+    map({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, "Code action")
+
+    -- Diagnostics. The old config put these on <leader>e / <leader>q,
+    -- which shadowed `:q<CR>` from keymaps.lua inside every LSP buffer,
+    -- and the whole <leader>d prefix belongs to nvim-dap. Moved to <leader>x.
+    map("n", "[d", function()
+      vim.diagnostic.jump({ count = -1, float = true })
+    end, "Previous diagnostic")
+    map("n", "]d", function()
+      vim.diagnostic.jump({ count = 1, float = true })
+    end, "Next diagnostic")
+    map("n", "<leader>xd", vim.diagnostic.open_float, "Show diagnostic")
+    map("n", "<leader>xq", vim.diagnostic.setloclist, "Diagnostic list")
+
+    -- Workspace
+    map("n", "<leader>wa", vim.lsp.buf.add_workspace_folder, "Add workspace folder")
+    map("n", "<leader>wr", vim.lsp.buf.remove_workspace_folder, "Remove workspace folder")
+    map("n", "<leader>wl", function()
+      print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
+    end, "List workspace folders")
+
+    -- tsserver formatting off — conform/prettier owns JS/TS.
+    if client.name == "ts_ls" then
+      client.server_capabilities.documentFormattingProvider = false
+      client.server_capabilities.documentRangeFormattingProvider = false
+    end
+
+    -- ESLint auto-fix on save
+    if client.name == "eslint" then
+      vim.api.nvim_create_autocmd("BufWritePre", {
+        buffer = bufnr,
+        callback = function()
+          pcall(vim.cmd, "LspEslintFixAll")
+        end,
+      })
+    end
+
+    -- Inlay hints. Colon call form — required on 0.11+.
+    if client:supports_method("textDocument/inlayHint") then
+      vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+    end
+
+    -- CodeLens: the IntelliJ-style "3 references / 2 implementations"
+    -- line above each class and method. jdtls.lua sets
+    -- implementationsCodeLens.enabled and referencesCodeLens.enabled, so
+    -- the server publishes them.
+    --
+    -- PERF + DEPRECATION. This used to drive refreshes by hand from
+    -- BufEnter/InsertLeave/BufWritePost plus a deferred 800ms kick, via
+    -- vim.lsp.codelens.refresh(). All of that is now redundant AND
+    -- actively harmful:
+    --
+    --   * Neovim 0.12 refreshes code lenses itself. The codelens provider
+    --     does nvim_buf_attach{on_lines, on_reload} and issues its own
+    --     internally-debounced request, so our autocmds were stacking
+    --     EXTRA project-wide round trips on top of the ones Neovim was
+    --     already making. For jdtls each of those resolves references
+    --     across the whole project -- it is the single most expensive
+    --     thing an LSP does here, and InsertLeave fires constantly.
+    --   * vim.lsp.codelens.refresh() is deprecated in 0.12 and REMOVED in
+    --     0.13. It printed a deprecation warning on every attach.
+    --
+    -- One call, same shape as inlay hints above, and Neovim owns the
+    -- lifecycle. Skipped entirely on big files (see ajay/bigfile.lua).
+    if client:supports_method("textDocument/codeLens") then
+      if not vim.g.codelens_off and not vim.b[bufnr].codelens_off then
+        vim.lsp.codelens.enable(true, { bufnr = bufnr })
+      end
+      map("n", "<leader>cl", vim.lsp.codelens.run, "Run code lens under cursor")
+    end
+  end,
+})
+
+vim.api.nvim_create_user_command("ToggleCodeLens", function()
+  local buf = vim.api.nvim_get_current_buf()
+  -- enable/is_enabled, not refresh/clear: same 0.12 API as above.
+  local on = vim.lsp.codelens.is_enabled({ bufnr = buf })
+  vim.g.codelens_off = on
+  vim.lsp.codelens.enable(not on, { bufnr = buf })
+  vim.notify("CodeLens: " .. (on and "OFF" or "ON"), on and vim.log.levels.WARN or vim.log.levels.INFO)
+end, { desc = "Toggle reference/implementation counts" })
+
+vim.api.nvim_create_user_command("ToggleInlayHints", function()
+  local buf = vim.api.nvim_get_current_buf()
+  local on = vim.lsp.inlay_hint.is_enabled({ bufnr = buf })
+  vim.lsp.inlay_hint.enable(not on, { bufnr = buf })
+  vim.notify("Inlay hints: " .. (on and "OFF" or "ON"), vim.log.levels.INFO)
+end, { desc = "Toggle inlay hints" })
+
+-- ══════════════════════════════════════════════════════════════════
+-- MASON, ON DEMAND
+-- ══════════════════════════════════════════════════════════════════
+--
+-- The old flow: build the mason registry on every startup, let
+-- mason-lspconfig work out what is installed, and have it call
+-- vim.lsp.enable() for us. Correct, but it paid full registry cost every
+-- single launch to answer a question that is almost always "everything is
+-- already installed, do nothing". It was ~12ms of a ~40ms startup.
+--
+-- The new flow inverts it:
+--
+--   1. Ask the cheap question first -- is each server/tool binary on PATH?
+--      That is a filesystem stat, not a registry build. options.lua has
+--      already put mason's bin directory on PATH, so mason-installed
+--      binaries resolve without mason being loaded at all.
+--   2. Enable the servers that are present. vim.lsp.enable() is all that
+--      is needed on 0.11+; nvim-lspconfig ships cmd/root_markers for every
+--      server in its own lsp/ directory.
+--   3. Only if something is MISSING, load mason and let it install --
+--      scheduled onto the main loop so it never blocks the first draw.
+--      mason-lspconfig's automatic_enable then picks up whatever it
+--      installs, so a fresh machine still converges without a restart.
+--
+-- Net effect: on a machine where everything is installed, mason is never
+-- loaded at all unless you ask for it with :Mason or :MasonSync.
+
+-- The binary that actually has to exist for a server to start, read from
+-- the config nvim-lspconfig ships rather than hardcoded here.
+local function server_bin(name)
+  local ok, cfg = pcall(function()
+    return vim.lsp.config[name]
+  end)
+  local cmd = ok and cfg and cfg.cmd
+  if type(cmd) == "table" then
+    return cmd[1]
+  end
+  return nil -- unknown server name, or a cmd we cannot introspect
 end
 
--- Setup LSP servers using new vim.lsp.config API
-local function setup_servers()
-	-- HTML
-	vim.lsp.config.html = {
-		cmd = { "vscode-html-language-server", "--stdio" },
-		filetypes = { "html" },
-		root_markers = { ".git" },
-		capabilities = capabilities,
-		on_attach = on_attach,
-	}
+local ready, missing = {}, false
 
-	-- CSS
-	vim.lsp.config.cssls = {
-		cmd = { "vscode-css-language-server", "--stdio" },
-		filetypes = { "css", "scss", "less" },
-		root_markers = { ".git" },
-		capabilities = capabilities,
-		on_attach = on_attach,
-	}
-
-	-- Clangd (C/C++)
-	vim.lsp.config.clangd = {
-		cmd = {
-			"clangd",
-			"--background-index",
-			"--clang-tidy",
-			"--completion-style=detailed",
-			"--header-insertion=iwyu",
-		},
-		filetypes = { "c", "cpp", "objc", "objcpp" },
-		root_markers = { "compile_commands.json", "compile_flags.txt", "CMakeLists.txt", ".git" },
-		capabilities = capabilities,
-		on_attach = on_attach,
-	}
-
-	-- Pyright (Python)
-	vim.lsp.config.pyright = {
-		cmd = { "pyright-langserver", "--stdio" },
-		filetypes = { "python" },
-		root_markers = { "pyrightconfig.json", "pyproject.toml", "setup.py", ".git" },
-		capabilities = capabilities,
-		on_attach = on_attach,
-		settings = {
-			python = {
-				analysis = {
-					typeCheckingMode = "basic",
-					useLibraryCodeForTypes = true,
-					autoSearchPaths = true,
-					diagnosticMode = "workspace",
-				},
-			},
-		},
-	}
-
-	-- Lua LS
-	vim.lsp.config.lua_ls = {
-		cmd = { "lua-language-server" },
-		filetypes = { "lua" },
-		root_markers = { ".git", ".luarc.json", ".luacheckrc" },
-		capabilities = capabilities,
-		on_attach = on_attach,
-		settings = {
-			Lua = {
-				diagnostics = {
-					globals = { "vim" },
-				},
-				workspace = {
-					library = vim.api.nvim_get_runtime_file("", true),
-					checkThirdParty = false,
-				},
-				telemetry = { enable = false },
-			},
-		},
-	}
-
-	-- TypeScript/JavaScript
-	vim.lsp.config.ts_ls = {
-		cmd = { "typescript-language-server", "--stdio" },
-		filetypes = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
-		root_markers = { "package.json", "tsconfig.json", "jsconfig.json", ".git" },
-		capabilities = capabilities,
-		on_attach = function(client, bufnr)
-			-- Disable tsserver formatting (prefer prettier/eslint)
-			client.server_capabilities.documentFormattingProvider = false
-			client.server_capabilities.documentRangeFormattingProvider = false
-			on_attach(client, bufnr)
-		end,
-	}
-
-	-- ESLint
-	vim.lsp.config.eslint = {
-		cmd = { "vscode-eslint-language-server", "--stdio" },
-		filetypes = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
-		root_markers = { ".eslintrc", ".eslintrc.js", ".eslintrc.json", "package.json", ".git" },
-		capabilities = capabilities,
-		on_attach = function(client, bufnr)
-			-- ESLint can format
-			client.server_capabilities.documentFormattingProvider = true
-
-			-- Auto-fix on save
-			vim.api.nvim_create_autocmd("BufWritePre", {
-				buffer = bufnr,
-				callback = function()
-					local ok = pcall(vim.cmd, "EslintFixAll")
-					if not ok then
-						-- Silently ignore if EslintFixAll is not available
-					end
-				end,
-			})
-			on_attach(client, bufnr)
-		end,
-	}
-
-	-- Tailwind CSS
-	vim.lsp.config.tailwindcss = {
-		cmd = { "tailwindcss-language-server", "--stdio" },
-		filetypes = {
-			"html",
-			"css",
-			"scss",
-			"javascript",
-			"javascriptreact",
-			"typescript",
-			"typescriptreact",
-			"vue",
-			"svelte",
-		},
-		root_markers = {
-			"tailwind.config.js",
-			"tailwind.config.ts",
-			"tailwind.config.cjs",
-			"postcss.config.js",
-			".git",
-		},
-		capabilities = capabilities,
-		on_attach = on_attach,
-		settings = {
-			tailwindCSS = {
-				classAttributes = { "class", "className", "classList", "ngClass" },
-				lint = {
-					cssConflict = "warning",
-					invalidApply = "error",
-					invalidConfigPath = "error",
-					invalidScreen = "error",
-					invalidTailwindDirective = "error",
-					invalidVariant = "error",
-					recommendedVariantOrder = "warning",
-				},
-				validate = true,
-			},
-		},
-	}
-
-	-- Java (JDTLS) - Handled by dedicated jdtls.lua file
-	-- See lua/ajay/jdtls.lua for complete Spring Boot configuration
-	-- DO NOT configure JDTLS here to avoid conflicts
+for _, name in ipairs(ensure_servers) do
+  local bin = server_bin(name)
+  if bin == nil then
+    -- Cannot tell. Do not enable it, and do not drag mason in over it.
+  elseif vim.fn.executable(bin) ~= 1 then
+    missing = true
+  elseif name ~= "jdtls" then
+    -- jdtls is INSTALLED by mason but STARTED by nvim-jdtls, which builds
+    -- its own cmd with the Lombok javaagent and a per-project workspace.
+    -- Enabling it here would race a second, misconfigured client.
+    table.insert(ready, name)
+  end
 end
 
--- Setup all servers
-setup_servers()
+if not missing then
+  for _, tool in ipairs(ensure_tools) do
+    if vim.fn.executable(tool) ~= 1 then
+      missing = true
+      break
+    end
+  end
+end
 
--- Enable all LSP servers (EXCLUDING jdtls - it's handled separately)
-local servers_to_enable = {
-	"html",
-	"cssls",
-	"clangd",
-	"pyright",
-	"lua_ls",
-	"ts_ls",
-	"eslint",
-	"tailwindcss",
-}
+if #ready > 0 then
+  vim.lsp.enable(ready)
+end
 
--- Note: jdtls is NOT enabled here - it's managed by the dedicated jdtls.lua file
-vim.lsp.enable(servers_to_enable)
+if missing then
+  vim.schedule(setup_mason)
+end
 
--- Auto-command to restart LSP
-vim.api.nvim_create_user_command("LspRestart", function()
-	local clients = vim.lsp.get_clients()
-	for _, client in ipairs(clients) do
-		vim.lsp.stop_client(client.id)
-	end
-	vim.defer_fn(function()
-		vim.cmd("edit")
-	end, 100)
-end, { desc = "Restart LSP servers" })
+-- Force the install pass without waiting to notice something is missing.
+-- Useful right after editing ensure_servers / ensure_tools above.
+vim.api.nvim_create_user_command("MasonSync", function()
+  setup_mason()
+  vim.notify("Mason loaded - installing anything missing.", vim.log.levels.INFO)
+end, { desc = "Load mason and install any missing LSP servers / tools" })

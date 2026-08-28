@@ -7,11 +7,59 @@ function M.setup()
 	local actions = require("telescope.actions")
 	local builtin = require("telescope.builtin")
 
+	-- ── PERF ─────────────────────────────────────────────────────────
+	-- Telescope's default file finder shells out to `find` and its default
+	-- grep re-derives ripgrep args each call. Both `fd` and `rg` are hard
+	-- requirements of this config anyway (see README), so name them
+	-- explicitly and hand them the flags that matter -- with a fallback so
+	-- a machine missing them still works, just slower.
+	local has_fd = vim.fn.executable("fd") == 1 or vim.fn.executable("fdfind") == 1
+	local fd_bin = vim.fn.executable("fd") == 1 and "fd" or "fdfind"
+
+	local find_command = has_fd
+			and {
+				fd_bin,
+				"--type",
+				"f",
+				"--hidden",
+				"--follow",
+				"--strip-cwd-prefix",
+				-- fd reads .gitignore itself, in Rust, before results ever
+				-- reach Lua. That is strictly cheaper than letting them
+				-- through and matching file_ignore_patterns per result.
+				"--exclude",
+				".git",
+				"--exclude",
+				"node_modules",
+				"--exclude",
+				"target",
+				"--exclude",
+				"build",
+				"--exclude",
+				"dist",
+				"--exclude",
+				"__pycache__",
+			}
+		or nil
+
 	telescope.setup({
 		defaults = {
 			prompt_prefix = " 🔍 ",
 			selection_caret = " ➤ ",
 			path_display = { "truncate" },
+			-- Explicit rg invocation for live_grep / grep_string. --smart-case
+			-- matches the editor's ignorecase+smartcase, and --trim keeps
+			-- deeply indented matches readable in a narrow results pane.
+			vimgrep_arguments = {
+				"rg",
+				"--color=never",
+				"--no-heading",
+				"--with-filename",
+				"--line-number",
+				"--column",
+				"--smart-case",
+				"--trim",
+			},
 			file_ignore_patterns = {
 				"node_modules",
 				".git/",
@@ -41,6 +89,7 @@ function M.setup()
 				theme = "dropdown",
 				previewer = false,
 				hidden = true,
+				find_command = find_command,
 			},
 			buffers = {
 				theme = "dropdown",

@@ -10,10 +10,18 @@ function M.setup()
     noremap = true 
   })
   
-  vim.keymap.set("n", "<leader>gc", ":LazyGitConfig<CR>", { 
-    desc = "LazyGit Config", 
-    silent = true, 
-    noremap = true 
+  -- COLLISION FIX: this was <leader>gc, which telescope.lua also maps to
+  -- git_commits. Both are global, so whichever module loaded last silently
+  -- won -- and which one that was depended on whether you pressed a
+  -- <leader>f key or <leader>gg first in the session.
+  --
+  -- Telescope keeps <leader>gc: browsing commit history is a daily action,
+  -- whereas editing lazygit's own config file is close to never. Moved to
+  -- the shifted variant.
+  vim.keymap.set("n", "<leader>gC", ":LazyGitConfig<CR>", {
+    desc = "LazyGit Config",
+    silent = true,
+    noremap = true
   })
   
   vim.keymap.set("n", "<leader>gf", ":LazyGitCurrentFile<CR>", { 
