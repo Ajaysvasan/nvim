@@ -25,6 +25,9 @@
 -- Soft dependency on purpose. lsp.lua drives EVERY language server, so a
 -- missing ajay/icons.lua must not take all of them down -- it should cost
 -- you pretty gutter symbols, nothing more.
+-- Resolves the 0.11 / 0.12 API differences once. See lua/ajay/compat.lua.
+local compat = require("ajay.compat")
+
 local ok_icons, icons = pcall(require, "ajay.icons")
 if not ok_icons then
   icons = { diagnostics = { ERROR = "E", WARN = "W", INFO = "I", HINT = "H" } }
@@ -283,7 +286,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
     -- vim.lsp.codelens.refresh(). All of that is now redundant AND
     -- actively harmful:
     --
-    --   * Neovim 0.12 refreshes code lenses itself. The codelens provider
+    --   * Neovim 0.12 refreshes code lenses itself (on 0.11 it does
+    --     not, which is exactly what compat.codelens back-fills). The codelens provider
     --     does nvim_buf_attach{on_lines, on_reload} and issues its own
     --     internally-debounced request, so our autocmds were stacking
     --     EXTRA project-wide round trips on top of the ones Neovim was
@@ -297,7 +301,10 @@ vim.api.nvim_create_autocmd("LspAttach", {
     -- lifecycle. Skipped entirely on big files (see ajay/bigfile.lua).
     if client:supports_method("textDocument/codeLens") then
       if not vim.g.codelens_off and not vim.b[bufnr].codelens_off then
-        vim.lsp.codelens.enable(true, { bufnr = bufnr })
+        -- compat.codelens, not vim.lsp.codelens: on 0.12 this IS
+        -- vim.lsp.codelens.enable; on 0.11, where that function does not
+        -- exist yet, the shim drives refresh() from autocmds instead.
+        compat.codelens.enable(true, { bufnr = bufnr })
       end
       map("n", "<leader>cl", vim.lsp.codelens.run, "Run code lens under cursor")
     end
@@ -306,10 +313,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 vim.api.nvim_create_user_command("ToggleCodeLens", function()
   local buf = vim.api.nvim_get_current_buf()
-  -- enable/is_enabled, not refresh/clear: same 0.12 API as above.
-  local on = vim.lsp.codelens.is_enabled({ bufnr = buf })
+  -- enable/is_enabled, not refresh/clear: same 0.12 API as above,
+  -- reached through the shim so this works on 0.11 too.
+  local on = compat.codelens.is_enabled({ bufnr = buf })
   vim.g.codelens_off = on
-  vim.lsp.codelens.enable(not on, { bufnr = buf })
+  compat.codelens.enable(not on, { bufnr = buf })
   vim.notify("CodeLens: " .. (on and "OFF" or "ON"), on and vim.log.levels.WARN or vim.log.levels.INFO)
 end, { desc = "Toggle reference/implementation counts" })
 

@@ -223,11 +223,19 @@ else
         if venv then
           return venv .. "/bin/python"
         end
+        -- exepath() returns "" when nothing is found, NOT nil -- and ""
+        -- is truthy in Lua, so `exepath(x) or fallback` never reaches
+        -- the fallback and hands the adapter an empty command instead.
+        -- Check for non-empty explicitly.
         local conda = os.getenv("CONDA_DEFAULT_ENV")
         if conda then
-          return vim.fn.exepath("python")
+          local py = vim.fn.exepath("python")
+          if py ~= "" then
+            return py
+          end
         end
-        return vim.fn.exepath("python3") or "python3"
+        local py3 = vim.fn.exepath("python3")
+        return py3 ~= "" and py3 or "python3"
       end,
     },
     {

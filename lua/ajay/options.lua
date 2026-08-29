@@ -77,7 +77,39 @@ elseif vim.env.WAYLAND_DISPLAY and vim.fn.executable("wl-copy") == 1 then
     paste = { ["+"] = "wl-paste --no-newline", ["*"] = "wl-paste --no-newline --primary" },
     cache_enabled = 1,
   }
+-- X11. Checked AFTER Wayland on purpose: XWayland sets DISPLAY too, so a
+-- Wayland session would otherwise match here and route the clipboard
+-- through the compatibility layer instead of the native one.
+--
+-- Order within X11 (xsel before xclip) and the flags below are Neovim's
+-- own, from runtime/autoload/provider/clipboard.vim -- this pins WHICH
+-- tool gets picked without changing the behaviour you already have.
+-- `--nodetach` / `-quiet` matter: both keep the process alive to own the
+-- selection, which is what cache_enabled = 1 then manages.
+elseif vim.env.DISPLAY and vim.fn.executable("xsel") == 1 then
+  vim.g.clipboard = {
+    name = "xsel",
+    copy = { ["+"] = "xsel --nodetach -i -b", ["*"] = "xsel --nodetach -i -p" },
+    paste = { ["+"] = "xsel -o -b", ["*"] = "xsel -o -p" },
+    cache_enabled = 1,
+  }
+elseif vim.env.DISPLAY and vim.fn.executable("xclip") == 1 then
+  vim.g.clipboard = {
+    name = "xclip",
+    copy = {
+      ["+"] = "xclip -quiet -i -selection clipboard",
+      ["*"] = "xclip -quiet -i -selection primary",
+    },
+    paste = {
+      ["+"] = "xclip -o -selection clipboard",
+      ["*"] = "xclip -o -selection primary",
+    },
+    cache_enabled = 1,
+  }
 end
+-- No branch matched (bare TTY, SSH with no forwarding, tmux-only)? Then
+-- vim.g.clipboard stays nil and Neovim's own detection runs, which also
+-- covers the OSC 52 and tmux fallbacks this block does not try to.
 
 -- Set AFTER startup. Touching 'clipboard' during init forces the provider
 -- to spawn immediately, which costs 30-80ms and, on macOS, is the usual

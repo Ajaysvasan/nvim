@@ -25,6 +25,25 @@ local function report()
   table.insert(out, ("tmux        : %s"):format(vim.env.TMUX and "YES" or "no"))
   table.insert(out, ("termguicolors: %s"):format(tostring(vim.o.termguicolors)))
 
+  -- ── VERSION COMPAT ──────────────────────────────────────────────
+  -- Which arm of lua/ajay/compat.lua this Neovim resolved to. Read this
+  -- FIRST when the same config behaves differently on two machines.
+  section(out, "VERSION COMPAT")
+  local ok_compat, compat = pcall(require, "ajay.compat")
+  if not ok_compat then
+    table.insert(out, "ajay/compat.lua failed to load: " .. tostring(compat))
+  else
+    table.insert(out, ("0.11+ : %s    0.12+ : %s"):format(
+      compat.at_least("0.11") and "yes" or "NO",
+      compat.at_least("0.12") and "yes" or "no"
+    ))
+    table.insert(out, "")
+    table.insert(out, "Probed features (native = used directly, shim = back-filled):")
+    for _, feat in ipairs(compat.tracked) do
+      table.insert(out, ("  %-28s %s"):format(feat, compat.has[feat] and "native" or "absent -> shim/off"))
+    end
+  end
+
   -- ── FONT / ICONS ────────────────────────────────────────────────
   section(out, "NERD FONT")
   table.insert(out, "These should be ICONS, not boxes or blanks:")

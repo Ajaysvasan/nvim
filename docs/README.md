@@ -16,6 +16,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 | [options.md](options.md) | `options.lua` | Editor settings, clipboard, fold/cursor persistence |
 | [keymaps.md](keymaps.md) | `keymaps.lua` | Plugin-free mappings: windows, motion, run-file, CMake |
 | [bigfile.md](bigfile.md) | `bigfile.lua` | Large-file protection — loaded eagerly, before plugins |
+| [compat.md](compat.md) | `compat.lua` | Running one config on both Neovim 0.11 and 0.12 |
 | [plugins.md](plugins.md) | `plugins.lua` | The lazy.nvim spec and every load trigger |
 
 ## UI
