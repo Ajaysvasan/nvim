@@ -58,7 +58,7 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 | `gi` | n | Go to implementation |
 | `gt` | n | Go to type definition |
 | `K` | n | Hover documentation |
-| `<C-k>` | n | Signature help *(shadows "window up" here — use `<C-w>k`)* |
+| `gK` | n | Signature help *(insert-mode `<C-s>` is a Neovim default for the same thing)* |
 | `[d` `]d` | n | Previous / next diagnostic |
 
 Source: [lsp.md](lsp.md)
@@ -172,7 +172,8 @@ Source: [telescope.md](telescope.md)
 | `hu` | Undo last stage | gitsigns |
 | `hp` | Preview hunk | gitsigns |
 | `hb` | Blame line | gitsigns |
-| `hd` | ⚠️ Diff this *(gitsigns, buffer-local — wins in git files)* / Harpoon remove | gitsigns / [harpoon](harpoon.md) |
+| `hd` | Diff this | gitsigns |
+| `hx` | Harpoon remove file | [harpoon](harpoon.md) |
 | `hD` | Diff against `HEAD~` | gitsigns |
 | `he` | Harpoon quick menu | harpoon |
 | `hh` | Harpoon in Telescope | harpoon |
@@ -339,6 +340,6 @@ Source: [telescope.md](telescope.md)
 | `<leader>gc` | Telescope git commits | **Resolved** — LazyGit config moved to `<leader>gC` |
 | `<leader>jn` | jdtls "test nearest" | **Resolved** — java-creator moved to `<leader>jN` |
 | `<leader>1`–`<leader>5` | Harpoon slots | **Resolved** — replaced `<C-1>`–`<C-5>`, which most terminals never sent and whose lazy-load trigger did not match |
-| `<leader>hd` | Gitsigns "diff this" **and** Harpoon "remove file" | Still shared. Gitsigns' is buffer-local, so it wins inside git-tracked files and Harpoon's applies elsewhere. Benign. |
-| `<C-k>` | Window-up **and** LSP signature help | Benign — LSP version is buffer-local; use `<C-w>k` in LSP buffers |
+| `<leader>hd` | Gitsigns "diff this" **and** Harpoon "remove file" | **Resolved** — gitsigns' is buffer-local and silently won in every git-tracked file, so harpoon's remove was dead there. Harpoon moved to `<leader>hx`. |
+| `<C-k>` | Window-up **and** LSP signature help | **Resolved** — the buffer-local LSP mapping won in every code buffer, so window-up was broken wherever a server attached. Signature help moved to `gK`. |
 | `K` | Move selection up (visual) **and** LSP hover (normal) | Different modes — no actual conflict |

@@ -33,10 +33,13 @@ local function report()
   if not ok_compat then
     table.insert(out, "ajay/compat.lua failed to load: " .. tostring(compat))
   else
-    table.insert(out, ("0.11+ : %s    0.12+ : %s"):format(
-      compat.at_least("0.11") and "yes" or "NO",
-      compat.at_least("0.12") and "yes" or "no"
-    ))
+    table.insert(
+      out,
+      ("0.11+ : %s    0.12+ : %s"):format(
+        compat.at_least("0.11") and "yes" or "NO",
+        compat.at_least("0.12") and "yes" or "no"
+      )
+    )
     table.insert(out, "")
     table.insert(out, "Probed features (native = used directly, shim = back-filled):")
     for _, feat in ipairs(compat.tracked) do

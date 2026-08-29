@@ -122,17 +122,47 @@ local function java_home_candidates()
   local seen = {}
 
   local function add(ver, home)
-    if not home or home == "" or seen[home] then
+    if not home or home == "" then
       return
     end
-    seen[home] = true
     if vim.fn.executable(home .. "/bin/java") ~= 1 then
       return
     end
+
+    -- Dedupe on the RESOLVED path, not the literal one. On a Linux distro
+    -- /usr/lib/jvm is mostly symlinks: here 16 entries -- java, java-21,
+    -- java-21-openjdk, java-openjdk, jre, jre-21, jre-21-openjdk, ... --
+    -- resolve to just 3 real JDKs. Keying on the literal path counted each
+    -- alias separately, so the same JDK was probe_version()'d up to five
+    -- times (a JVM spawn each) and :JdtlsRescanJDKs printed 16 lines of
+    -- mostly the same thing.
+    local real = (vim.uv or vim.loop).fs_realpath(home) or home
+    if seen[real] then
+      return
+    end
+    seen[real] = true
+
+    -- JDK or JRE? `bin/java` alone does not tell you: a headless JRE has
+    -- it too. It matters because detect_runtimes() below feeds these to
+    -- Eclipse as `java.configuration.runtimes`, and Eclipse needs a JDK
+    -- there -- a JRE has no compiler and no src.zip, so a project pinned
+    -- to that release gets unresolved JDK symbols and no source
+    -- navigation into the standard library.
+    --
+    -- This is not hypothetical on Fedora: java-25-openjdk, jre-25,
+    -- jre-25-openjdk and jre-openjdk are ALL javac-less here, so 25 had
+    -- no JDK at all and the runtime entry pointed at a JRE.
+    local has_javac = vim.fn.executable(home .. "/bin/javac") == 1
+
+    -- Store the RESOLVED path, not the alias that happened to be globbed
+    -- first. Otherwise the winner of the dedupe is an arbitrary symlink
+    -- name, and reports read absurdly: /usr/lib/jvm/java-25 is a symlink
+    -- to java-latest-openjdk, so it shows as "ver=26 java-25".
+    --
     -- Trust the binary over the directory name. Vendor dir naming is not
     -- something to parse: zulu-21.jdk, temurin-21.jdk, jdk-21.0.3+9,
     -- graalvm-community-openjdk-21... all differ.
-    table.insert(c, { ver or probe_version(home) or 0, home })
+    table.insert(c, { ver or probe_version(real) or 0, real, has_javac })
   end
 
   -- Explicit override always wins.
@@ -206,10 +236,17 @@ vim.api.nvim_create_user_command("JdtlsRescanJDKs", function()
   local found = java_home_candidates()
   local lines = {}
   for _, e in ipairs(found) do
-    table.insert(lines, ("  %-4s %s"):format(e[1], e[2]))
+    -- JDK vs JRE is shown because only a JDK can serve as an Eclipse
+    -- runtime. A version that lists only JRE here is a version your
+    -- projects cannot compile against, however many entries it has.
+    table.insert(lines, ("  %-4s %-4s %s"):format(e[1], e[3] and "JDK" or "JRE", e[2]))
   end
   vim.notify(
-    ("Rescanned. %d JDK%s found:\n%s"):format(#found, #found == 1 and "" or "s", table.concat(lines, "\n")),
+    ("Rescanned. %d JVM%s found (unique real paths):\n%s"):format(
+      #found,
+      #found == 1 and "" or "s",
+      table.concat(lines, "\n")
+    ),
     vim.log.levels.INFO,
     { title = "jdtls" }
   )
@@ -227,8 +264,12 @@ local MAX_EE = 25
 local function detect_runtimes()
   local seen, runtimes = {}, {}
   for _, entry in ipairs(java_home_candidates()) do
-    local ver, path = entry[1], entry[2]
-    if ver and ver >= 8 and ver <= MAX_EE and vim.fn.isdirectory(path) == 1 and not seen[ver] then
+    local ver, path, has_javac = entry[1], entry[2], entry[3]
+    -- has_javac is the important condition: a JRE is not a valid Eclipse
+    -- runtime. Without this check the FIRST candidate for a version won,
+    -- JRE or not, purely on glob order -- which on this machine handed
+    -- JavaSE-25 a compiler-less /usr/lib/jvm/java-25-openjdk.
+    if ver and ver >= 8 and ver <= MAX_EE and has_javac and vim.fn.isdirectory(path) == 1 and not seen[ver] then
       seen[ver] = true
       table.insert(runtimes, {
         name = ver <= 8 and "JavaSE-1.8" or ("JavaSE-" .. ver),

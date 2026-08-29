@@ -77,7 +77,8 @@ M.dap = {
 -- Quick visual check that the font is actually rendering these.
 -- :lua require("ajay.icons").preview()
 function M.preview()
-  local lines = { "If any of these are boxes or blanks, the TERMINAL FONT is", "not a Nerd Font. Nothing in Lua can fix that.", "" }
+  local lines =
+    { "If any of these are boxes or blanks, the TERMINAL FONT is", "not a Nerd Font. Nothing in Lua can fix that.", "" }
   for _, group in ipairs({ "diagnostics", "tree", "git", "dap" }) do
     table.insert(lines, group .. ":")
     local row = {}

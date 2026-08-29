@@ -56,6 +56,11 @@ local ensure_installed = {
   "properties", -- application.properties
 }
 
+-- Required for its side effect as much as anything: on 0.11 it back-fills
+-- `vim.list`, which nvim-treesitter's install path calls and which does not
+-- exist before 0.12. Without it, install() throws and NOTHING gets a parser.
+require("ajay.compat")
+
 local ok, ts = pcall(require, "nvim-treesitter")
 if not ok then
   vim.notify("nvim-treesitter not available", vim.log.levels.WARN)
@@ -101,26 +106,98 @@ vim.schedule(function()
     return
   end
 
-  local ok_installed, installed = pcall(ts.get_installed)
-  if not ok_installed then
-    pcall(ts.install, ensure_installed)
-    return
+  -- ── THE "NO HIGHLIGHTING AT ALL" BUG ─────────────────────────────
+  --
+  -- A language needs TWO things installed, in two different directories:
+  --
+  --   install_dir/parser/<lang>.so     the compiled grammar
+  --   install_dir/queries/<lang>/      the highlight/indent/fold queries
+  --
+  -- On the `main` branch the plugin ships NO queries of its own (`ls
+  -- queries/` in the repo is empty) -- install() fetches both halves.
+  --
+  -- `ts.get_installed()` with NO ARGUMENT merges those two lists. That is
+  -- what this used to call, and it is why every language silently lost
+  -- highlighting: a half-finished install left `queries/ecma`,
+  -- `queries/jsx` and `queries/html_tags` on disk with an EMPTY parser
+  -- directory, the merged list reported those as "installed", and any
+  -- language already counted present was never re-attempted.
+  --
+  -- The failure is invisible rather than loud, because a stale
+  -- master-era .so left behind in the PLUGIN's own directory is still on
+  -- runtimepath. vim.treesitter.start() finds it, attaches a highlighter,
+  -- and succeeds -- against zero queries. Parsed buffer, no captures, no
+  -- colour, no error.
+  --
+  -- So: check the two halves SEPARATELY and require both.
+  local function list(kind)
+    local ok_l, l = pcall(ts.get_installed, kind)
+    local set = {}
+    if ok_l then
+      for _, lang in ipairs(l) do
+        set[lang] = true
+      end
+    end
+    return set
   end
 
-  local have = {}
-  for _, lang in ipairs(installed) do
-    have[lang] = true
-  end
+  local have_parser, have_queries = list("parsers"), list("queries")
 
   local missing = {}
   for _, lang in ipairs(ensure_installed) do
-    if not have[lang] then
+    if not (have_parser[lang] and have_queries[lang]) then
       table.insert(missing, lang)
     end
   end
 
-  if #missing > 0 then
-    pcall(ts.install, missing)
+  if #missing == 0 then
+    return
+  end
+
+  -- `summary = true` is what :TSInstall passes. Without it this is a
+  -- multi-minute background job with NO output whatsoever -- which is the
+  -- other half of why the breakage was so hard to place: quit before it
+  -- finishes and nothing lands, with nothing on screen to say so.
+  vim.notify(
+    ("Installing %d treesitter parser%s: %s\n\nHighlighting for these is off until it finishes."):format(
+      #missing,
+      #missing == 1 and "" or "s",
+      table.concat(missing, ", ")
+    ),
+    vim.log.levels.INFO,
+    { title = "treesitter" }
+  )
+
+  local ok_task, task = pcall(ts.install, missing, { summary = true })
+  if not ok_task then
+    vim.notify(
+      "treesitter install failed to start:\n" .. tostring(task),
+      vim.log.levels.ERROR,
+      { title = "treesitter" }
+    )
+    return
+  end
+
+  -- Say so when it lands, and re-highlight what is already open -- the
+  -- FileType autocmd below has long since fired for those buffers.
+  if type(task) == "table" and type(task.await) == "function" then
+    task:await(function(err)
+      vim.schedule(function()
+        if err then
+          vim.notify("treesitter install failed:\n" .. tostring(err), vim.log.levels.ERROR, { title = "treesitter" })
+          return
+        end
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(buf) and not vim.b[buf].bigfile then
+            local lang = vim.treesitter.language.get_lang(vim.bo[buf].filetype or "")
+            if lang then
+              pcall(vim.treesitter.start, buf, lang)
+            end
+          end
+        end
+        vim.notify("Treesitter parsers installed. Highlighting is live.", vim.log.levels.INFO, { title = "treesitter" })
+      end)
+    end)
   end
 end)
 

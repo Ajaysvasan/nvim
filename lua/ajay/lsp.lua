@@ -13,8 +13,21 @@
 --     directory; hardcoding `cmd` meant a Mason-installed binary that
 --     wasn't on PATH yet would silently fail to start.
 --  4. `vim.diagnostic.goto_next/goto_prev` -> `vim.diagnostic.jump`.
---  5. Removed the custom `LspRestart` command — 0.11 ships one, and
---     redefining it shadowed the built-in.
+--  5. Removed the custom `LspRestart` command.
+--
+--     CORRECTION: the note here used to say "0.11 ships one". It does not
+--     — nvim-lspconfig does. And lspconfig's plugin file starts with
+--     `if vim.fn.exists(':lsp') == 2 then return end`, so on 0.12, where
+--     Neovim ships a built-in :lsp, lspconfig defines none of LspInfo,
+--     LspLog, LspStart, LspStop or LspRestart.
+--
+--     So the command names differ by version, and neither is ours to
+--     define:
+--       0.11 :  :LspRestart   :LspInfo   :LspLog    (from lspconfig)
+--       0.12 :  :lsp restart  :checkhealth vim.lsp  (core, `:h :lsp`)
+--
+--     :checkhealth vim.lsp works on BOTH — it is what LspInfo aliases to
+--     on 0.11 — which is why the dashboard button uses it.
 
 -- ── Diagnostics ────────────────────────────────────────────────────
 -- Glyphs come from ajay.icons, which builds them from codepoints rather
@@ -230,7 +243,18 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
     -- Docs
     map("n", "K", vim.lsp.buf.hover, "Hover documentation")
-    map("n", "<C-k>", vim.lsp.buf.signature_help, "Signature help")
+    -- COLLISION FIX: this was <C-k>, which keymaps.lua maps globally to
+    -- "window up". Buffer-local mappings WIN over global ones, so the
+    -- moment any language server attached, Ctrl-k stopped moving between
+    -- splits -- in every code buffer, which is most of them. Window
+    -- navigation is muscle memory; signature help is not, so signature
+    -- help moves.
+    --
+    -- Nothing is lost: Neovim already binds <C-s> in INSERT mode to
+    -- signature help by default on both 0.11 and 0.12, which is where you
+    -- actually want it (mid-call, typing arguments). gK is the normal-mode
+    -- companion, matching the built-in gr* LSP mappings in style.
+    map("n", "gK", vim.lsp.buf.signature_help, "Signature help")
 
     -- Actions
     map("n", "<leader>rn", vim.lsp.buf.rename, "Rename symbol")

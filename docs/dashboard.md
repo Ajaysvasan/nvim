@@ -34,7 +34,7 @@ focused — press the letters shown on the left.
 | `SPC f g` | Live Grep | `:Telescope live_grep` |
 | `SPC f b` | Buffers | `:Telescope buffers` |
 | `SPC g s` | Git Status | `:Telescope git_status` |
-| `SPC l` | LSP Info | `:LspInfo` |
+| `SPC l` | LSP Info | `:checkhealth vim.lsp` |
 | `n` | New File | `:ene | startinsert` |
 | `c` | Neovim Config | `:e ~/.config/nvim/init.lua` |
 | `l` | Lazy | `:Lazy` |

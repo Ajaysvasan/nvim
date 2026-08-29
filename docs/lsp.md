@@ -262,10 +262,13 @@ server actually attached.
 | Key | Action |
 |---|---|
 | `K` | Hover documentation |
-| `<C-k>` | Signature help |
+| `gK` | Signature help |
 
-> ⚠️ `<C-k>` shadows the global "focus window up" mapping from
-> [keymaps.md](keymaps.md) inside LSP buffers. Use `<C-w>k` there.
+> This was `<C-k>`, which shadowed the global "focus window up" mapping from
+> [keymaps.md](keymaps.md) in every LSP buffer — buffer-local mappings win.
+> Window navigation is muscle memory, so signature help moved to `gK`. Nothing
+> is lost: Neovim binds `<C-s>` in **insert** mode to signature help by default
+> on both 0.11 and 0.12, which is where you actually want it.
 
 ### Actions
 

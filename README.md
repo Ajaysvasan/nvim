@@ -370,7 +370,7 @@ Then set `vim.g.enable_notebook = true` in `init.lua`, restart, and run
 | `:Lazy`                                | Plugin install/load state and startup profile                                                                                                  |
 | `:Mason`                               | LSP/formatter/DAP install state                                                                                                                |
 | `:ConformInfo`                         | Which formatter will run on this buffer                                                                                                        |
-| `:LspInfo`                             | Which servers are attached and their root dir                                                                                                  |
+| `:checkhealth vim.lsp`                 | Which servers are attached and their root dir (`:LspInfo` is a 0.11-only alias; lspconfig does not define it on 0.12)                          |
 | `:JdtlsLog`                            | The Eclipse-side jdtls log — where the real Java errors hide                                                                                   |
 | `:lua require("ajay.icons").preview()` | Renders every glyph the config uses                                                                                                            |
 

@@ -107,12 +107,47 @@ require("lazy").setup({
   {
     "nvim-telescope/telescope.nvim",
     cmd = "Telescope",
+    -- EVERY lhs telescope.lua maps has to be listed here. lazy.nvim only
+    -- creates a load-trigger for keys named in `keys`; a mapping the module
+    -- makes that is NOT named is dead on a fresh session until some OTHER
+    -- trigger happens to load the plugin first. Only these five were listed
+    -- before, so <leader>fw, <leader>fh, the four <leader>g* git pickers and
+    -- fifteen others did nothing until you had already pressed <leader>ff.
+    -- Same failure the harpoon spec below documents.
     keys = {
       { "<leader>ff", desc = "Find files" },
       { "<leader>fg", desc = "Live grep" },
       { "<leader>fb", desc = "Buffers" },
       { "<leader><leader>", desc = "Quick buffer switch" },
       { "<leader>/", desc = "Fuzzy find in buffer" },
+      -- files / content
+      "<leader>fa",
+      "<leader>fr",
+      "<leader>fw",
+      "<leader>fs",
+      "<leader>fp",
+      -- lsp / symbols / diagnostics
+      "<leader>fd",
+      "<leader>fD",
+      "<leader>fi",
+      "<leader>fR",
+      "<leader>fe",
+      "<leader>fE",
+      -- git pickers
+      "<leader>gc",
+      "<leader>gb",
+      "<leader>gs",
+      "<leader>gS",
+      -- neovim internals
+      "<leader>ft",
+      "<leader>fh",
+      "<leader>fk",
+      "<leader>fc",
+      "<leader>fC",
+      "<leader>fm",
+      "<leader>fj",
+      "<leader>fq",
+      "<leader>fl",
     },
     dependencies = {
       "nvim-lua/plenary.nvim",
@@ -218,6 +253,14 @@ require("lazy").setup({
     "zbirenbaum/copilot.lua",
     cmd = "Copilot",
     event = "InsertEnter",
+    -- InsertEnter covers most of it, but these are normal-mode keys you may
+    -- well press before typing anything in a session -- "is Copilot on?"
+    -- being the obvious one.
+    keys = {
+      { "<leader>ct", desc = "Toggle Copilot" },
+      { "<leader>cs", desc = "Copilot status" },
+      { "<leader>cp", desc = "Copilot panel" },
+    },
     config = function()
       setup_module("ajay.copilot")
     end,
@@ -268,6 +311,14 @@ require("lazy").setup({
     cmd = { "ConformInfo", "Format" },
     keys = {
       { "<leader>lf", mode = { "n", "v" }, desc = "Format buffer" },
+      -- The toggles conform.lua registers. `event = BufWritePre` only fires
+      -- on a SAVE, so without these the toggles did not exist until you had
+      -- already written a file -- which is exactly when you want to reach
+      -- for "turn format-on-save off".
+      { "<leader>tf", desc = "Toggle format on save (global)" },
+      { "<leader>tF", desc = "Toggle format on save (buffer)" },
+      { "<leader>ts", desc = "Format status" },
+      { "<leader>ti", desc = "Conform info" },
     },
     config = function()
       setup_module("ajay.conform")
@@ -290,6 +341,9 @@ require("lazy").setup({
     keys = {
       { "<leader>gg", desc = "Open LazyGit" },
       { "<leader>gf", desc = "LazyGit current file" },
+      { "<leader>gC", desc = "LazyGit config" },
+      { "<leader>gl", desc = "LazyGit filter" },
+      { "<leader>gL", desc = "LazyGit filter current file" },
     },
     dependencies = { "nvim-lua/plenary.nvim" },
     config = function()
@@ -303,6 +357,9 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   {
     "mfussenegger/nvim-dap",
+    -- As with telescope above: dap.lua maps 25 keys, only 7 were listed, so
+    -- everything from <leader>dB to <leader>d? was unreachable until you had
+    -- already hit <leader>db / <leader>dc / <F5>.
     keys = {
       { "<leader>db", desc = "DAP toggle breakpoint" },
       { "<leader>dc", desc = "DAP continue / start" },
@@ -311,6 +368,27 @@ require("lazy").setup({
       { "<F6>", desc = "DAP step over" },
       { "<F7>", desc = "DAP step into" },
       { "<F8>", desc = "DAP step out" },
+      { "<F9>", desc = "DAP step back" },
+      { "<F10>", desc = "DAP run to cursor" },
+      -- breakpoints / session
+      "<leader>dB",
+      "<leader>dl",
+      "<leader>dC",
+      "<leader>dr",
+      "<leader>dq",
+      "<leader>dp",
+      "<leader>dR",
+      -- inspection (dap-ui). <leader>de is normal AND visual.
+      "<leader>ds",
+      "<leader>df",
+      "<leader>dK",
+      { "<leader>de", mode = { "n", "v" }, desc = "DAP eval" },
+      -- python test helpers. <leader>dts is visual only.
+      "<leader>dtn",
+      "<leader>dtc",
+      { "<leader>dts", mode = "v", desc = "DAP debug selection" },
+      -- keymap reference
+      "<leader>d?",
     },
     cmd = { "DapContinue", "DapToggleBreakpoint", "DapNew" },
     dependencies = {
@@ -346,6 +424,13 @@ require("lazy").setup({
       -- Must match what harpoon.lua actually maps, or the lazy-load
       -- trigger never fires. It previously declared <A-1>..<A-5> while
       -- the module mapped <C-1>..<C-5>.
+      -- The rest of what harpoon.lua maps. These were missing for the same
+      -- reason the <A-n>/<C-n> mismatch below was: the list drifted from
+      -- the module.
+      { "<leader>hx", desc = "Harpoon remove file" },
+      { "<leader>hc", desc = "Harpoon clear all" },
+      { "<leader>hj", desc = "Harpoon next" },
+      { "<leader>hk", desc = "Harpoon prev" },
       { "<leader>1", desc = "Harpoon slot 1" },
       { "<leader>2", desc = "Harpoon slot 2" },
       { "<leader>3", desc = "Harpoon slot 3" },

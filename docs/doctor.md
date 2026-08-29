@@ -70,7 +70,7 @@ See [comment.md](comment.md) for the full story.
 | `:Lazy` | Plugin load state and startup profile |
 | `:Mason` | LSP / formatter / DAP install state |
 | `:ConformInfo` | Which formatter runs on this buffer |
-| `:LspInfo` | Attached servers and root dirs |
+| `:checkhealth vim.lsp` | Attached servers and root dirs (`:LspInfo` is a 0.11-only lspconfig alias for it) |
 | `:JdtlsLog` | The Eclipse-side Java log |
 
 ## Keymaps

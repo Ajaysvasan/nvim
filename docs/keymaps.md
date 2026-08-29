@@ -43,9 +43,10 @@ the plugin to load eagerly, defeating the point.
 | `<C-Left>` | Vertical resize -2 |
 | `<C-Right>` | Vertical resize +2 |
 
-> ⚠️ `<C-k>` is **re-mapped buffer-locally to LSP signature help** inside any
-> buffer with an LSP attached (see [lsp.md](lsp.md)). In LSP buffers, use
-> `<C-w>k` to move up a window.
+> `<C-k>` used to be re-mapped buffer-locally to LSP signature help, which
+> beat this global mapping in every buffer with a server attached — i.e. most
+> code buffers. Signature help moved to `gK` (see [lsp.md](lsp.md)), so `<C-k>`
+> now means "focus window up" everywhere.
 
 ## Motion and editing
 

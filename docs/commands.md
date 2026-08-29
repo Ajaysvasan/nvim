@@ -90,5 +90,6 @@ except where noted.
 | `:Gitsigns toggle_*` | gitsigns — `toggle_signs`, `toggle_numhl`, `toggle_linehl`, `toggle_word_diff` |
 | `:UndotreeToggle` | undotree |
 | `:DapContinue` / `:DapToggleBreakpoint` / `:DapNew` | nvim-dap |
-| `:LspInfo` / `:LspRestart` | Neovim built-in on 0.11+ |
+| `:checkhealth vim.lsp` | Neovim built-in — attached servers, root dirs, capabilities |
+| `:LspInfo` / `:LspRestart` | **nvim-lspconfig, 0.11 only.** lspconfig skips defining these when Neovim has a built-in `:lsp`, which 0.12 does. On 0.12 use `:checkhealth vim.lsp` and `:lsp restart` (`:h :lsp`). |
 | `:checkhealth` | Neovim built-in |

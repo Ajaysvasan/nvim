@@ -30,7 +30,7 @@ a single chord — no fuzzy searching, no buffer list to scan.
 | `<leader>a` | Add the current file to the list (notifies with the filename) |
 | `<leader>he` | Toggle the quick menu — edit the list directly as text |
 | `<leader>hh` | Browse the list in a Telescope picker, with file preview |
-| `<leader>hd` | Remove the current file from the list |
+| `<leader>hx` | Remove the current file from the list |
 | `<leader>hc` | Clear the whole list |
 | `<leader>hj` | Jump to the next file in the list |
 | `<leader>hk` | Jump to the previous file |
@@ -60,8 +60,13 @@ split:
 
 | Harpoon | Gitsigns |
 |---|---|
-| `hd` `hc` `he` `hh` `hj` `hk` | `hs` `hr` `hS` `hu` `hR` `hp` `hb` `hd`* `hD` |
+| `hx` `hc` `he` `hh` `hj` `hk` | `hs` `hr` `hS` `hu` `hR` `hp` `hb` `hd` `hD` |
 
-`<leader>hd` is claimed by **both** — harpoon's "remove file" and gitsigns'
-"diff this". Gitsigns' version is buffer-local (set in `on_attach`), so **inside
-a git-tracked file gitsigns wins**; elsewhere harpoon's applies.
+There is no longer an overlap. There used to be: harpoon's "remove file" was
+also on `<leader>hd`, which gitsigns claims for "diff this". Gitsigns sets its
+mappings buffer-locally in `on_attach`, and a buffer-local mapping **beats** a
+global one — so harpoon's remove was dead in every git-tracked file, which is
+most files you open. It only ever worked outside a repo.
+
+Gitsigns kept `<leader>hd` (it is the one that actually fired); harpoon's remove
+moved to `<leader>hx`.

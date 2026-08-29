@@ -38,7 +38,16 @@ function M.setup()
     vim.notify("Added to Harpoon: " .. vim.fn.expand("%:t"), vim.log.levels.INFO)
   end, "Harpoon add file")
 
-  map("<leader>hd", function()
+  -- COLLISION FIX: this was <leader>hd, which gitsigns also maps -- to
+  -- "Diff this", from its on_attach, so BUFFER-LOCALLY. A buffer-local
+  -- mapping beats a global one, which means this harpoon binding was
+  -- dead in every file gitsigns attaches to: i.e. every file in a git
+  -- repo. It only ever worked outside one.
+  --
+  -- gitsigns keeps <leader>hd. It is the mapping that actually functions
+  -- today, so moving it would break working muscle memory to fix a
+  -- binding that never fired. <leader>hx here instead ("x" = remove).
+  map("<leader>hx", function()
     harpoon:list():remove()
     vim.notify("Removed from Harpoon", vim.log.levels.INFO)
   end, "Harpoon remove file")

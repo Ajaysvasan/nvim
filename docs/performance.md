@@ -242,7 +242,7 @@ with 30 buffers open does not pay to re-scan all of them.
 | `:TSStatus` | Whether treesitter is actually on for this buffer, and whether parsers conflict |
 | `:BigFileStatus` | Whether large-file protection kicked in here |
 | `:ConformInfo` | Which formatter runs, and whether it is installed |
-| `:LspInfo` | Attached servers and their root dirs |
+| `:checkhealth vim.lsp` | Attached servers and their root dirs |
 
 > **Caveat on headless numbers:** `--headless` does not fire `UIEnter`, so
 > `VeryLazy` plugins — lualine here — are not counted. In a real terminal they

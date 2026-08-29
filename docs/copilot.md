@@ -30,7 +30,7 @@ Default when no state file exists: **enabled**.
 
 | Setting | Value | Why |
 |---|---|---|
-| `suggestion.enabled` | `true` | Ghost-text suggestions as you type |
+| `suggestion.enabled` | **`false`** | Off on purpose — Copilot comes through nvim-cmp instead. See below. |
 | `auto_trigger` | `true` | No key needed to ask for a suggestion |
 | `debounce` | `75` ms | Fast enough to feel live, slow enough not to fire on every keystroke of a long word |
 | `accept_word` / `accept_line` | `false` | Deliberately off — partial accepts encourage skimming instead of reading the whole suggestion |
@@ -55,8 +55,19 @@ want a machine writing the message.
 **priority 1100** in [cmp.lua](cmp.md), above LSP — so AI suggestions appear at
 the top of the completion menu as `[AI]` entries.
 
-That means suggestions reach you two ways: as ghost text (accept with `<M-l>`)
-and as menu entries (accept with `<CR>`).
+Copilot reaches you **one** way: as `[AI]` entries in the completion menu,
+accepted with `<CR>`.
+
+It used to reach you two ways — ghost text *and* menu entries — which is what
+`suggestion.enabled = true` bought. That is the configuration copilot-cmp's own
+README tells you not to run, and the reason is practical rather than dogmatic:
+both paths render the same completion through different UIs at the same time.
+The ghost line and the highlighted menu entry can be different suggestions, and
+`<M-l>` accepts one while `<CR>` accepts the other.
+
+**To go back to ghost text instead:** set `suggestion.enabled = true` in
+`copilot.lua` *and* remove `{ name = "copilot" }` from the sources list in
+[cmp.lua](cmp.md). Pick one path, not both.
 
 ## Keymaps
 

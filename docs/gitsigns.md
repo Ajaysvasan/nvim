@@ -89,8 +89,11 @@ Both are `expr` mappings that pass through to Vim's built-in `]c`/`[c` when
 
 ## Prefix collisions
 
-`<leader>h` is shared with [harpoon](harpoon.md). `<leader>hd` is claimed by
-both; gitsigns' is buffer-local so it wins inside git-tracked files.
+`<leader>h` is shared with [harpoon](harpoon.md), but the two no longer
+overlap. Harpoon's "remove file" used to sit on `<leader>hd` as well; because
+gitsigns maps buffer-locally in `on_attach` it silently won inside every
+git-tracked file, leaving harpoon's binding dead there. Gitsigns keeps
+`<leader>hd`; harpoon's remove moved to `<leader>hx`.
 
 `<leader>tb` / `<leader>td` share the `<leader>t` toggle prefix with conform's
 `<leader>tf` / `<leader>tF` / `<leader>ts` / `<leader>ti` and

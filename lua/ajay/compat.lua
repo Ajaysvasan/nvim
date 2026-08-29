@@ -99,6 +99,59 @@ end
 -- branch. When 0.11 support is dropped, delete the else-arm here and
 -- nothing else in the config changes.
 
+-- ── vim.list (0.12) ────────────────────────────────────────────────
+-- THIS ONE IS NOT FOR OUR CODE -- it is for nvim-treesitter.
+--
+-- The `main` branch calls `vim.list.unique()` in config.norm_languages(),
+-- which every install() and update() goes through. `vim.list` landed in
+-- 0.12; on 0.11 it is nil, so the call raises
+--   "attempt to index field 'list' (a nil value)"
+-- and PARSER INSTALLATION FAILS ENTIRELY on 0.11.
+--
+-- That failure is silent and total: no parsers, no queries, therefore no
+-- treesitter highlighting in ANY language. The editor looks fine, opens
+-- files fine, and colours nothing.
+--
+-- Back-filled rather than worked around because the call is inside the
+-- plugin -- there is no call site of ours to rewrite. Semantics copied
+-- from Neovim 0.12's runtime/lua/vim/_core/shared.lua: dedupe IN PLACE
+-- keeping first occurrences, return the same table, optional `key`
+-- function, and a nil key counts every value as unique.
+--
+-- Defined only when absent, so 0.12+ always uses the real one.
+if vim.list == nil then
+  local function key_fn(v, key)
+    if key then
+      return key(v)
+    end
+    return v
+  end
+
+  vim.list = {
+    unique = function(t, key)
+      vim.validate("t", t, "table")
+      local seen = {}
+      local finish = #t
+      local j = 1
+      for i = 1, finish do
+        local v = t[i]
+        local vh = key_fn(v, key)
+        if not seen[vh] then
+          t[j] = v
+          if vh ~= nil then
+            seen[vh] = true
+          end
+          j = j + 1
+        end
+      end
+      for i = j, finish do
+        t[i] = nil
+      end
+      return t
+    end,
+  }
+end
+
 -- ── CodeLens ───────────────────────────────────────────────────────
 -- The one real divergence in this config.
 --
