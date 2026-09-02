@@ -457,7 +457,17 @@ require("lazy").setup({
     opts = {
       options = {
         icons_enabled = vim.g.have_nerd_font ~= false,
-        theme = "catppuccin",
+        -- FIX: was `theme = "catppuccin"`, which is not a lualine theme.
+        -- catppuccin ships one file PER FLAVOUR --
+        -- lua/lualine/themes/catppuccin-{latte,frappe,macchiato,mocha}.lua
+        -- plus catppuccin-nvim -- and no plain `catppuccin`. lualine could
+        -- not resolve it, silently fell back to `auto`, and warned once per
+        -- launch: "lualine: There are some issues with your config. Run
+        -- :LualineNotices for details". Same class of bug as the
+        -- `colorscheme("catppuccin-nvim")` one fixed in colorscheme.lua.
+        --
+        -- Must match vim.cmd.colorscheme() at the bottom of colorscheme.lua.
+        theme = "catppuccin-frappe",
         globalstatus = true,
       },
     },

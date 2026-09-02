@@ -10,7 +10,7 @@ Loads on `VeryLazy` (the statusline can appear a frame late).
 | Setting | Value | Why |
 |---|---|---|
 | `icons_enabled` | `vim.g.have_nerd_font ~= false` | Follows the global font flag — falls back to text-only on a machine without a patched font |
-| `theme` | `"catppuccin"` | Matches [the colorscheme](colorscheme.md) automatically |
+| `theme` | `"catppuccin-frappe"` | Matches [the colorscheme](colorscheme.md). **Was `"catppuccin"`, which does not exist** — catppuccin ships one lualine theme per flavour (`catppuccin-latte/-frappe/-macchiato/-mocha`, plus `catppuccin-nvim`) and no bare `catppuccin`. lualine silently fell back to `auto` and warned *"There are some issues with your config. Run `:LualineNotices`"* on every launch. Change this whenever you change the flavour in `colorscheme.lua`. |
 | `globalstatus` | `true` | **One statusline for the whole window**, not one per split. With a file tree and a DAP panel open, per-split statuslines waste three rows and repeat the same information. |
 
 Everything else is lualine's default section layout.
