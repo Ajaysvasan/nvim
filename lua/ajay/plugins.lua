@@ -37,7 +37,13 @@ local function setup_module(name)
         ("%s loaded but returned %s, not a table.\n\n"):format(name, type(mod))
           .. "The file is almost certainly truncated. Check that it ends\n"
           .. "with `return M`:\n\n"
-          .. ("  tail -3 ~/.config/nvim/lua/%s.lua"):format(name:gsub("%%.", "/")),
+          -- BUG FIX: was gsub("%%.", "/") -- "%%" is a literal '%' in a Lua
+          -- pattern, so that matched '%' + any char, which a module name
+          -- like "ajay.telescope" never has. The gsub did nothing, and this
+          -- error message -- shown only when a module is broken, exactly
+          -- when you most need the right path -- suggested a nonexistent
+          -- file ("lua/ajay.telescope.lua" instead of "lua/ajay/telescope.lua").
+          .. ("  tail -3 ~/.config/nvim/lua/%s.lua"):format(name:gsub("%.", "/")),
         vim.log.levels.ERROR
       )
     end)
@@ -308,7 +314,14 @@ require("lazy").setup({
   {
     "stevearc/conform.nvim",
     event = { "BufWritePre" },
-    cmd = { "ConformInfo", "Format" },
+    -- BUG FIX: found benchmarking against kafka. The `keys` entries below
+    -- cover <leader>tf/<leader>tF, but lazy only stubs an EX COMMAND from
+    -- `cmd`. ToggleFormatOnSave and ToggleFormatOnSaveBuffer were missing
+    -- from this list, so typing either by name -- rather than using the
+    -- leader keymap -- before ever saving a file threw "E492: Not an
+    -- editor command", because conform.nvim (and the commands it defines)
+    -- had never been loaded.
+    cmd = { "ConformInfo", "Format", "ToggleFormatOnSave", "ToggleFormatOnSaveBuffer" },
     keys = {
       { "<leader>lf", mode = { "n", "v" }, desc = "Format buffer" },
       -- The toggles conform.lua registers. `event = BufWritePre` only fires

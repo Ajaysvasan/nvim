@@ -23,7 +23,10 @@ The screen you see when you run `nvim` with no file argument. Loads on
 | `pcall(require, "alpha")` guard | Warns and returns instead of erroring if alpha isn't installed yet — a fresh clone shouldn't fail at startup |
 | Highlights derived from `Function` / `Comment` / `Normal` / `Keyword` | The dashboard follows whatever colorscheme is active instead of hardcoding hex that fights it. Each has a literal fallback if the group has no `fg`. |
 | `ColorScheme` autocmd | `:colorscheme` runs `:highlight clear`, which wipes anything set with `nvim_set_hl`. Without this, switching colorscheme left the dashboard on default highlights until restart. |
-| `buttons.opts.spacing = 0` | alpha's default puts a blank line between every button. With eleven buttons that is 21 rows and a 35-row screen — taller than an 80×24 terminal, so the footer scrolled off. Packed, the layout is 23 rows. |
+| Outer `type = "group"` with `opts.position = "v_center"` | alpha only centers each line horizontally; nothing centered the block vertically, so on any terminal taller than the content, everything sat pinned to the top with dead space below. This wraps the whole layout in alpha's own vertical-centering group (`layout_element.group`, shifts by `(win_height - content_height) / 2`) instead of guessing at padding. It re-runs on every resize, since alpha redraws on `WinResized`/`VimResized` by default. |
+| `dashboard.section.buttons.val` is a function, not a fixed table | Lets the button spacing adapt to the actual window height on every redraw (alpha calls `el.val()` fresh each render). Two densities: **airy** (a blank row between every button, two between groups — 34 rows total) when the window is at least 34 rows tall, else **compact** (no gap within a group, one between groups — 24 rows total, the old fixed layout). Falls back automatically instead of clipping on a short terminal. |
+| `BUTTON_WIDTH = 40` (was alpha's default of 50) | alpha pads every shortcut out to a fixed-width card. 50 columns was sized for alpha's own example menu, not this one — the longest label here is 15 columns and every shortcut is 7, so most rows had 30-40 blank columns between the label and its key. 40 is sized to this menu's actual content plus a fixed margin. |
+| Buttons grouped into Find / Manage / Quit | Eleven buttons with zero grouping read as one flat list. Quit is set apart on its own — it's the one irreversible action on the screen. In airy mode a single blank row separates buttons within a group and a double blank row separates groups, so the grouping is visible even with breathing room; in compact mode there's no room to spare, so only the double-row group gap survives. |
 | `FileType alpha` autocmd | Clears `foldenable`, `number`, `relativenumber`, `signcolumn`, `cursorline`, `statusline` and `list` buffer-locally. Without it the alpha buffer inherits the editing UI and the layout misaligns. |
 
 ## Highlight groups
@@ -49,17 +52,23 @@ focused — press the letters shown on the right.
 
 | Shortcut | Action | Runs |
 |---|---|---|
+| **Find** | | |
 | `SPC f f` | Find File | `:Telescope find_files` |
 | `SPC f r` | Recent Files | `:Telescope oldfiles` |
 | `SPC f g` | Live Grep | `:Telescope live_grep` |
 | `SPC f b` | Buffers | `:Telescope buffers` |
 | `SPC g s` | Git Status | `:Telescope git_status` |
 | `SPC l` | LSP Info | `:checkhealth vim.lsp` |
+| **Manage** | | |
 | `n` | New File | `:ene | startinsert` |
 | `c` | Neovim Config | `:e ~/.config/nvim/init.lua` |
 | `l` | Lazy | `:Lazy` |
 | `m` | Mason | `:Mason` |
+| **Leave** | | |
 | `q` | Quit | `:qa` |
+
+The blank rows in the table mirror actual blank rows on screen — the button
+list renders as three visually separated groups, not one flat list of eleven.
 
 > **A *Sessions* button used to sit here**, calling
 > `require('persistence').load()`. `persistence.nvim` is not in the plugin list,
@@ -83,10 +92,14 @@ buffer is gone.
 ## Layout
 
 ```
-padding · header (wordmark) · padding · cwd · padding · buttons · padding · footer (stats)
+group (position = "v_center")
+  header (wordmark) · padding · cwd · padding · buttons (3 groups, gap between) · padding · footer (stats)
 ```
 
-23 rows, so it fits an 80×24 terminal without scrolling.
+The whole block sits inside one outer group so alpha can center it vertically
+as a unit — 24 rows in compact mode, 34 in airy mode (see the settings table
+above), whichever the current window height picks. Either way it's centered,
+not pinned to the top with the rest of the screen left blank.
 
 ## Keymaps
 

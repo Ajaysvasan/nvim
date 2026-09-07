@@ -272,11 +272,18 @@ function M.setup()
     end
   end, { nargs = "?", desc = "Create a new blank Jupyter notebook" })
 
-  -- Auto-initialize Molten for Python files
+  -- BUG FIX: this fired on every python/markdown FileType event -- i.e.
+  -- every buffer switch, not just the first one -- so a session with a
+  -- handful of .py files open got the same "features available" notice
+  -- repeatedly. Once per session is enough.
+  local told = false
   vim.api.nvim_create_autocmd("FileType", {
     pattern = { "python", "markdown" },
     callback = function()
-      -- Show helpful message
+      if told then
+        return
+      end
+      told = true
       vim.notify("Jupyter notebook features available! Use <leader>mi to initialize kernel", vim.log.levels.INFO)
     end,
   })

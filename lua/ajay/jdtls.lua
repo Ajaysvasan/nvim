@@ -181,7 +181,17 @@ local function java_home_candidates()
       for line in vim.gsplit(listing, "\n", { trimempty = true }) do
         local ver, home = line:match("^%s*([%d][%d%._]*)%s.*%s(/.+)$")
         if ver and home then
-          local major = ver:match("^1%%.(%d+)") or ver:match("^(%d+)")
+          -- BUG FIX: was "^1%%.(%d+)" -- "%%" is a literal '%' in a Lua
+          -- pattern, so that matched "1", a literal '%', ANY char, then
+          -- digits. Since java_home -V never prints a '%', this never
+          -- matched, and the "^(%d+)" fallback took over -- capturing
+          -- just the leading "1" from old-style "1.8.0_442" version
+          -- strings. Every JDK 8 found this way (Oracle/Adoptium .pkg
+          -- installs, not Homebrew) was tagged version 1, which
+          -- detect_runtimes()'s `ver >= 8` check then silently dropped.
+          -- One escaped dot, not an escaped percent: "%." matches a
+          -- literal '.', same as probe_version() above already does.
+          local major = ver:match("^1%.(%d+)") or ver:match("^(%d+)")
           add(tonumber(major), home)
         end
       end
@@ -325,10 +335,12 @@ local function jdtls_required_java()
   mf = mf:gsub("\r\n", "\n"):gsub("\n ", "")
 
   local ee = mf:match("Bundle%-RequiredExecutionEnvironment:%s*JavaSE%-([%d%.]+)")
-    or mf:match("osgi%%.ee=JavaSE.-version=([%d%.]+)")
+    -- Same "%%." typo as above -- "%." is a literal dot, "%%." is a
+    -- literal '%' followed by any char, which "osgi.ee=..." never has.
+    or mf:match("osgi%.ee=JavaSE.-version=([%d%.]+)")
 
   if ee then
-    local major = ee:match("^1%%.(%d+)") or ee:match("^(%d+)")
+    local major = ee:match("^1%.(%d+)") or ee:match("^(%d+)")
     if tonumber(major) then
       cached_min = tonumber(major)
     end
@@ -485,7 +497,34 @@ end
 
 -- Main -------------------------------------------------------------
 
-local function start_jdtls()
+local function start_jdtls(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  -- BUG FIX (found benchmarking against a real multi-module Gradle
+  -- project, kafka): bigfile.lua flags oversized buffers at BufReadPre,
+  -- then -- once an LSP actually attaches -- detaches it again on
+  -- LspAttach. That is one buffer-detach too late for jdtls specifically.
+  --
+  -- start_or_attach() had already spawned a full JDT LS server and handed
+  -- it this project's root_dir before the detach ran, so the server began
+  -- importing the whole Gradle build for a file nobody meant to index.
+  -- Worse: nvim-jdtls's own reuse check looks at LIVE BUFFER ATTACHMENTS
+  -- to decide whether a server for this root_dir is already running. A
+  -- client detached-but-not-stopped is invisible to that check, so the
+  -- NEXT normal Java file opened in the same project started a SECOND
+  -- server against the SAME `-data` workspace directory. Two JDT LS
+  -- processes writing the same on-disk index concurrently is how one of
+  -- them hit OutOfMemoryError mid-write, corrupted the index file, and
+  -- both were then stuck in an infinite reimport-crash loop -- multiple
+  -- GB of RAM, no forward progress, workspace unusable until wiped
+  -- (:JdtlsWipeWorkspace).
+  --
+  -- Skip starting jdtls at all for a bigfile buffer, before any of that
+  -- can happen, instead of starting it and cleaning up after.
+  if vim.b[bufnr].bigfile then
+    return
+  end
+
   local jdtls_ok, jdtls = pcall(require, "jdtls")
   if not jdtls_ok then
     notify_once("no-plugin", "nvim-jdtls not available", vim.log.levels.WARN)
@@ -557,7 +596,12 @@ local function start_jdtls()
     "-Declipse.product=org.eclipse.jdt.ls.core.product",
     "-Dlog.protocol=true",
     "-Dlog.level=ALL",
-    "-Xmx2g",
+    -- MEASURED: 2g OOM'd indexing kafka (6k+ files, ~20 Gradle modules) --
+    -- "OutOfMemoryError: Java heap space" while writing the JDT core
+    -- index, which then corrupted the index file and left the server
+    -- stuck reimporting on every restart. 2g is fine for an ordinary
+    -- single-module project; 4g is what it took to index kafka clean.
+    "-Xmx4g",
     "--add-modules=ALL-SYSTEM",
     "--add-opens",
     "java.base/java.util=ALL-UNNAMED",
@@ -702,10 +746,17 @@ function M.setup()
   local group = vim.api.nvim_create_augroup("ajay_jdtls", { clear = true })
 
   -- For every Java buffer opened from here on.
+  --
+  -- Passed as a plain `callback = start_jdtls` before, which handed the
+  -- function the autocmd's ARGS TABLE as its bufnr argument, not a
+  -- number -- `vim.b[bufnr]` would have errored the moment the bigfile
+  -- guard above was added. Needs the explicit wrapper to pass args.buf.
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = "java",
-    callback = start_jdtls,
+    callback = function(args)
+      start_jdtls(args.buf)
+    end,
   })
 
   -- And for the buffer that triggered this load in the first place --

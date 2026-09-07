@@ -14,8 +14,6 @@
 
 local M = {}
 
--- 50 columns wide, which is exactly alpha's default button width, so the
--- wordmark and the button block share an edge.
 local header = {
   [[███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗]],
   [[████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║]],
@@ -92,11 +90,42 @@ function M.setup()
   -- `opts.inherit` TABLE to its children, never `opts.hl`. So DashButton
   -- and DashShortcut were defined and never used -- the buttons rendered
   -- as plain Normal text with alpha's built-in "Keyword" shortcuts.
+  --
+  -- NEATNESS PASS.
+  --
+  --  1. alpha's dashboard.button() pads every shortcut out to a fixed
+  --     50-column card. The longest label here ("  Neovim Config") is 15
+  --     columns and every shortcut is 7, so most rows had 30-40 blank
+  --     columns of dead space between the label and its key -- a canyon,
+  --     not a gap. BUTTON_WIDTH below is sized to the actual content
+  --     (longest label + longest shortcut + a fixed breathing margin),
+  --     not a number alpha picked for a menu with different labels.
+  --  2. Eleven buttons with zero grouping is just a list. They are three
+  --     lists -- find things, change/manage things, leave.
+  --  3. The whole screen used to be pinned to the top-left of the window:
+  --     alpha only centers each line HORIZONTALLY (align_center, per
+  --     element); nothing centered the block vertically, so on any
+  --     terminal taller than the ~24 rows the content used, everything
+  --     sat in a clump near the top with dead space below it. Fixed
+  --     below by wrapping the whole layout in one `type = "group"` with
+  --     `opts.position = "v_center"` -- alpha's own vertical-centering
+  --     mechanism (layout_element.group, alpha.lua ~L377), which shifts
+  --     the group down by `(win_height - content_height) / 2` and
+  --     re-runs on every resize (alpha redraws on WinResized/VimResized
+  --     by default). This is what actually centers it, not a guess at
+  --     padding numbers.
+  local BUTTON_WIDTH = 40
+
   local function button(sc, txt, cmd)
     local b = dashboard.button(sc, txt, cmd)
     b.opts.hl = "DashButton"
     b.opts.hl_shortcut = "DashShortcut"
+    b.opts.width = BUTTON_WIDTH
     return b
+  end
+
+  local function gap()
+    return { type = "padding", val = 1 }
   end
 
   -- NOTE: there used to be a "Sessions" button here calling
@@ -104,12 +133,12 @@ function M.setup()
   -- list, so pressing it raised "module 'persistence' not found". Removed
   -- rather than left as a trap; if you want session restore, add
   -- folke/persistence.nvim to plugins.lua and put the button back.
-  dashboard.section.buttons.val = {
-    button("SPC f f", "󰍉  Find File", "<cmd>Telescope find_files<CR>"),
-    button("SPC f r", "  Recent Files", "<cmd>Telescope oldfiles<CR>"),
-    button("SPC f g", "  Live Grep", "<cmd>Telescope live_grep<CR>"),
-    button("SPC f b", "  Buffers", "<cmd>Telescope buffers<CR>"),
-    button("SPC g s", "  Git Status", "<cmd>Telescope git_status<CR>"),
+  local find_specs = {
+    { "SPC f f", "󰍉  Find File", "<cmd>Telescope find_files<CR>" },
+    { "SPC f r", "  Recent Files", "<cmd>Telescope oldfiles<CR>" },
+    { "SPC f g", "  Live Grep", "<cmd>Telescope live_grep<CR>" },
+    { "SPC f b", "  Buffers", "<cmd>Telescope buffers<CR>" },
+    { "SPC g s", "  Git Status", "<cmd>Telescope git_status<CR>" },
     -- WAS `<cmd>LspInfo<CR>`, which is dead on Neovim 0.12.
     --
     -- :LspInfo is not a core command, it comes from nvim-lspconfig --
@@ -121,32 +150,89 @@ function M.setup()
     --
     -- :checkhealth vim.lsp is what LspInfo is an alias FOR on 0.11, and
     -- it is core on both versions, so it needs no compat branch.
-    button("SPC l  ", "  LSP Info", "<cmd>checkhealth vim.lsp<CR>"),
-    button("n      ", "  New File", "<cmd>ene <BAR> startinsert<CR>"),
-    button("c      ", "  Neovim Config", "<cmd>e ~/.config/nvim/init.lua<CR>"),
-    button("l      ", "󰒲  Lazy", "<cmd>Lazy<CR>"),
-    button("m      ", "  Mason", "<cmd>Mason<CR>"),
-    button("q      ", "  Quit", "<cmd>qa<CR>"),
+    { "SPC l  ", "  LSP Info", "<cmd>checkhealth vim.lsp<CR>" },
   }
 
-  -- alpha's default is a blank line between every button. With eleven of
-  -- them that alone is 21 rows, and the whole screen came to 35 -- taller
-  -- than an 80x24 terminal, so the footer and the last buttons scrolled
-  -- off. Packed, the layout is 23 rows and fits.
+  local manage_specs = {
+    { "n      ", "  New File", "<cmd>ene <BAR> startinsert<CR>" },
+    { "c      ", "  Neovim Config", "<cmd>e ~/.config/nvim/init.lua<CR>" },
+    { "l      ", "󰒲  Lazy", "<cmd>Lazy<CR>" },
+    { "m      ", "  Mason", "<cmd>Mason<CR>" },
+  }
+
+  -- Leave -- set apart on purpose, the one irreversible action here.
+  local leave_specs = {
+    { "q      ", "  Quit", "<cmd>qa<CR>" },
+  }
+
+  -- `inner` blank rows sit between buttons within a group, `outer` blank
+  -- rows sit between groups. Built manually (not alpha's own
+  -- opts.spacing, which pads after every item including the last) so the
+  -- row count is exact and predictable.
+  local function build_buttons(inner, outer)
+    local groups = { find_specs, manage_specs, leave_specs }
+    local val = {}
+    for gi, specs in ipairs(groups) do
+      for i, spec in ipairs(specs) do
+        if i > 1 then
+          for _ = 1, inner do
+            val[#val + 1] = gap()
+          end
+        end
+        val[#val + 1] = button(spec[1], spec[2], spec[3])
+      end
+      if gi < #groups then
+        for _ = 1, outer do
+          val[#val + 1] = gap()
+        end
+      end
+    end
+    return val
+  end
+
+  -- Fixed rows outside the button list: 6-line header + 2 padding rows +
+  -- 1-line subtitle + 1-line footer = 10, plus whatever the buttons add.
+  --
+  -- Compact (no gap between buttons, one blank row between groups): 11
+  -- buttons + 2 group gaps = 13 rows -> 24 total. This is the size that
+  -- used to be hardcoded, chosen to just fit an 80x24 terminal after a
+  -- prior regression at 35 rows scrolled the footer off.
+  --
+  -- Airy (one blank row between every button, two between groups): 11
+  -- buttons + 8 inner gaps + 4 outer gaps = 23 rows -> 34 total. This is
+  -- what actually fixes "congested" -- six/four buttons sitting flush
+  -- against each other read as a solid block. It only renders on a
+  -- terminal tall enough to hold it; the v_center wrapper below re-checks
+  -- this on every resize, so shrinking the terminal falls back to
+  -- compact instead of clipping the airy version.
+  dashboard.section.buttons.val = function()
+    if vim.api.nvim_win_get_height(0) >= 34 then
+      return build_buttons(1, 2)
+    end
+    return build_buttons(0, 1)
+  end
   dashboard.section.buttons.opts.spacing = 0
 
   dashboard.section.footer.val = { stats_line() }
   dashboard.section.footer.opts.hl = "DashFooter"
 
+  -- Everything lives inside one outer group so `position = "v_center"`
+  -- can center the whole block vertically -- see the NEATNESS PASS note
+  -- above. Without this wrapper, v_center has nothing to shift as a unit.
   dashboard.opts.layout = {
-    { type = "padding", val = 1 },
-    dashboard.section.header,
-    { type = "padding", val = 1 },
-    subtitle,
-    { type = "padding", val = 1 },
-    dashboard.section.buttons,
-    { type = "padding", val = 1 },
-    dashboard.section.footer,
+    {
+      type = "group",
+      val = {
+        dashboard.section.header,
+        { type = "padding", val = 1 },
+        subtitle,
+        { type = "padding", val = 1 },
+        dashboard.section.buttons,
+        { type = "padding", val = 1 },
+        dashboard.section.footer,
+      },
+      opts = { position = "v_center" },
+    },
   }
 
   set_highlights()
