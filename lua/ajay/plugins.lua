@@ -551,6 +551,7 @@ require("lazy").setup({
       -- live under a logs/ directory in plenty of projects.
       vim.filetype.add({
         extension = { log = "log" },
+        filename = { log = "log", logs = "log" },
         pattern = {
           -- Rotated logs: app.log.1, app.log.2024-01-01
           [".*%.log%.[%w%-%.]+"] = "log",
