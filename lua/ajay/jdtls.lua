@@ -113,9 +113,92 @@ end
 -- for the session; :JdtlsRescanJDKs busts it after installing a new JDK.
 local cached_jdks = nil
 
+-- Forward-declared HERE, not at its use site further down, because
+-- :JdtlsRescanJDKs (defined above jdtls_required_java) has to reset it.
+-- A `local` declared later in the file is not in scope for a closure
+-- defined earlier -- the assignment would silently create a GLOBAL and
+-- the real cache would never be cleared. Same trap the forward
+-- declarations for open_type_stage/open_dir_stage guard against.
+local cached_min = nil
+
+-- ── DISK CACHE ────────────────────────────────────────────────────
+--
+-- MEASURED against kafka: the in-session memo above is not enough, because
+-- the scan still runs ONCE PER SESSION, on the first Java file you open,
+-- and it is all blocking subprocess work:
+--
+--   /usr/libexec/java_home -V   41 ms
+--   unzip -p <jdt core jar>     17 ms   (jdtls_required_java, below)
+--   java -version               48 ms   each, per JDK it cannot read
+--
+-- That is why opening the FIRST Java file measured 100 ms while every
+-- one after it measured 7 ms. The set of installed JDKs changes when you
+-- install a JDK -- roughly never -- so paying it every session is pure
+-- waste.
+--
+-- Persisted to stdpath("cache"). Invalidation is the whole game:
+--
+--   * every cached JDK path is re-checked with executable(), an fs stat,
+--     not a subprocess -- microseconds. A JDK you deleted or moved
+--     invalidates the cache immediately rather than being handed to
+--     Eclipse as a runtime that no longer exists.
+--   * the jdtls jar FILENAME is part of the key, and it carries the
+--     version (org.eclipse.jdt.ls.core_1.60.0...jar), so a Mason upgrade
+--     re-reads the manifest instead of trusting a stale minimum.
+--   * :JdtlsRescanJDKs deletes the file outright.
+local cache_file = vim.fn.stdpath("cache") .. "/ajay-jdtls-probe.json"
+
+local function read_cache()
+  local f = io.open(cache_file, "r")
+  if not f then
+    return nil
+  end
+  local raw = f:read("*a")
+  f:close()
+  local ok, data = pcall(vim.json.decode, raw)
+  if not ok or type(data) ~= "table" then
+    return nil
+  end
+  return data
+end
+
+local function write_cache(tbl)
+  local ok, raw = pcall(vim.json.encode, tbl)
+  if not ok then
+    return
+  end
+  local f = io.open(cache_file, "w")
+  if not f then
+    return
+  end
+  f:write(raw)
+  f:close()
+end
+
 local function java_home_candidates()
   if cached_jdks then
     return cached_jdks
+  end
+
+  -- Disk cache, revalidated. Each entry is {version, path, has_javac};
+  -- json round-trips those as string keys, hence the rebuild below.
+  local disk = read_cache()
+  if disk and type(disk.jdks) == "table" and #disk.jdks > 0 then
+    local restored, stale = {}, false
+    for _, e in ipairs(disk.jdks) do
+      local ver, path, has_javac = e[1], e[2], e[3]
+      if type(path) ~= "string" or vim.fn.executable(path .. "/bin/java") ~= 1 then
+        stale = true
+        break
+      end
+      -- has_javac is re-stat'd too: a JRE that gained a compiler (or a
+      -- JDK that lost one) changes whether it is a valid Eclipse runtime.
+      table.insert(restored, { ver, path, vim.fn.executable(path .. "/bin/javac") == 1 })
+    end
+    if not stale then
+      cached_jdks = restored
+      return cached_jdks
+    end
   end
 
   local c = {}
@@ -233,6 +316,12 @@ local function java_home_candidates()
   end
 
   cached_jdks = c
+  -- Persist so the next session skips the whole probe. Merged into
+  -- whatever jdtls_required_java() already wrote rather than replacing
+  -- it -- the two share one file and are populated at different times.
+  local existing = read_cache() or {}
+  existing.jdks = c
+  write_cache(existing)
   return c
 end
 
@@ -243,6 +332,10 @@ M.detected_jdks = java_home_candidates
 -- mid-session -- otherwise the scan result is stable for the whole session.
 vim.api.nvim_create_user_command("JdtlsRescanJDKs", function()
   cached_jdks = nil
+  cached_min = nil
+  -- Must delete the DISK cache too, or this command re-reads the very
+  -- file it is meant to invalidate and reports the stale answer back.
+  vim.fn.delete(cache_file)
   local found = java_home_candidates()
   local lines = {}
   for _, e in ipairs(found) do
@@ -311,7 +404,8 @@ end
 -- when Mason upgrades jdtls and the requirement moves from 21 to 25,
 -- this picks that up with no edit here.
 local FALLBACK_MIN = 21
-local cached_min = nil
+-- cached_min is forward-declared near cached_jdks at the top of this file
+-- so :JdtlsRescanJDKs can reset it -- see the note there.
 
 local function jdtls_required_java()
   if cached_min then
@@ -321,6 +415,17 @@ local function jdtls_required_java()
 
   local jar = vim.fn.glob(mason_root .. "/jdtls/plugins/org.eclipse.jdt.ls.core_*.jar", true, true)[1]
   if not jar or vim.fn.executable("unzip") ~= 1 then
+    return cached_min
+  end
+
+  -- Disk cache, keyed on the jar's FILENAME -- which carries the version
+  -- (org.eclipse.jdt.ls.core_1.60.0.202606262232.jar), so a Mason upgrade
+  -- changes the key and the manifest is re-read automatically. Saves the
+  -- 17 ms `unzip` spawn on the first Java file of every session.
+  local jar_key = vim.fn.fnamemodify(jar, ":t")
+  local disk = read_cache()
+  if disk and disk.jar == jar_key and type(disk.min_java) == "number" then
+    cached_min = disk.min_java
     return cached_min
   end
 
@@ -345,6 +450,11 @@ local function jdtls_required_java()
       cached_min = tonumber(major)
     end
   end
+
+  local existing = read_cache() or {}
+  existing.jar = jar_key
+  existing.min_java = cached_min
+  write_cache(existing)
   return cached_min
 end
 

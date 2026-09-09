@@ -21,15 +21,15 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 | `<leader>g` | **Git** — gitsigns/telescope/lazygit |
 | `<leader>h` | Git **h**unks (gitsigns) + Harpoon |
 | `<leader>j` | **Java** (jdtls) |
-| `<leader>l` | LSP/format |
+| `<leader>l` | **LSP** — format, diagnostics, emmet, workspace folders |
 | `<leader>m` | Notebooks (**m**olten) |
 | `<leader>n` | `nh` — clear search highlight |
 | `<leader>r` | **Run** current file, LSP rename |
 | `<leader>s` | **Spring Boot** |
 | `<leader>t` | **Toggles** |
 | `<leader>u` | Undo tree |
-| `<leader>w` | Write, LSP workspace folders |
-| `<leader>x` | Save+quit, LSP diagnostics, Emmet |
+| `<leader>w` | Write (no sub-keys — kept instant) |
+| `<leader>x` | Save+quit (no sub-keys — kept instant) |
 
 ---
 
@@ -60,6 +60,14 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 | `K` | n | Hover documentation |
 | `gK` | n | Signature help *(insert-mode `<C-s>` is a Neovim default for the same thing)* |
 | `[d` `]d` | n | Previous / next diagnostic |
+
+> **Neovim 0.11's built-in `gr*` maps are deleted by this config.** 0.11 added
+> `grn` `gra` `grr` `gri` `grt` `grx` globally — every one already duplicated by
+> a shorter binding above (`grr`→`gr`, `gri`→`gi`, `grt`→`gt`, `grn`→`<leader>rn`,
+> `gra`→`<leader>ca`, `grx`→`<leader>cl`). Keeping them made `gr` *ambiguous*:
+> it is a complete mapping and the prefix of all six, so "go to references"
+> could not fire until `timeoutlen` (400ms) expired. They are removed in
+> `lsp.lua`, which costs no functionality and makes `gr` instant.
 
 Source: [lsp.md](lsp.md)
 
@@ -238,6 +246,7 @@ Source: [jdtls.md](jdtls.md)
 | `sr` | Run application |
 | `sb` | Build |
 | `st` | Run tests |
+| `sx` | **Stop** any running Spring Boot task |
 
 Source: [springboot.md](springboot.md)
 
@@ -267,23 +276,32 @@ Source: [springboot.md](springboot.md)
 
 | Key | Action | Source |
 |---|---|---|
-| `tf` | Format on save — global | [conform](conform.md) |
-| `tF` | Format on save — buffer | conform |
+| `tf` | Format on save — global (**persisted across restarts**) | [conform](conform.md) |
+| `tF` | Format on save — buffer (this session only) | conform |
 | `ts` | Format status | conform |
 | `ti` | `:ConformInfo` | conform |
 | `tb` | Git blame line | [gitsigns](gitsigns.md) |
 | `td` | Show deleted lines | gitsigns |
 | `tt` | Transparency | [transparency](transparency.md) |
 
-## `<leader>l`, `<leader>w`, `<leader>x`
+## `<leader>l` — language server / format
 
 | Key | Mode | Action | Source |
 |---|---|---|---|
 | `lf` | n, v | Format buffer / range | [conform](conform.md) |
-| `wa` / `wr` / `wl` | n | LSP workspace folder add / remove / list | [lsp](lsp.md) |
-| `xd` | n | Show diagnostic under cursor | lsp |
-| `xq` | n | Diagnostics to location list | lsp |
-| `xe` | n, v | Emmet wrap with abbreviation | [qol](qol.md) |
+| `ld` | n | Show diagnostic under cursor | [lsp](lsp.md) |
+| `lq` | n | Diagnostics to location list | lsp |
+| `le` | n, v | Emmet wrap with abbreviation | [qol](qol.md) |
+| `lwa` / `lwr` / `lwl` | n | LSP workspace folder add / remove / list | lsp |
+
+> **Everything here used to be on `<leader>w*` and `<leader>x*`, and that was a
+> bug.** `<leader>w` (save) and `<leader>x` (save and quit) are *complete*
+> mappings in [keymaps](keymaps.md), so making them the *prefix* of these left
+> both ambiguous — Neovim cannot act until `timeoutlen` (400ms) expires. Every
+> save in a code buffer, and every save-and-quit in a web buffer, stalled.
+>
+> `<leader>l` is not itself a mapping, so nothing in this group is ambiguous.
+> `<leader>w` and `<leader>x` are now childless and fire instantly.
 
 ## `<leader>m` — notebooks *(only with `enable_notebook`)*
 
@@ -325,9 +343,15 @@ Source: [jupyter.md](jupyter.md)
 | `<C-j>` / `<C-k>` | i | Next / previous result |
 | `<C-q>` | i | Send to quickfix and open |
 | `<C-x>` | i, n | Delete buffer |
+| `<C-o>` | i, n | Cycle layout horizontal ⇄ vertical (vertical = full-width preview) |
 | `<Esc>` | i | Close |
 | `q` | n | Close |
 | `dd` | n | Delete buffer *(buffers picker)* |
+
+Telescope's own defaults are still live on top of these — notably `<C-u>` /
+`<C-d>` scroll the **preview**, `<C-v>` / `<C-x>` / `<C-t>` open the result in a
+split / vsplit / tab, and `<C-/>` lists every active mapping for the picker
+you are in.
 
 Source: [telescope.md](telescope.md)
 

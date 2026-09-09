@@ -40,13 +40,81 @@ if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then return end
 return { timeout_ms = 3000, lsp_format = "fallback" }
 ```
 
-- Two independent kill switches: global (`vim.g`) and per-buffer (`vim.b`)
+- Two kill switches, combined with **OR**: global (`vim.g`) and per-buffer
+  (`vim.b`). See [precedence](#precedence-the-global-is-a-master-switch).
 - `lsp_format = "fallback"` — if no formatter is configured for the filetype,
   fall back to the LSP's own formatter. This is the modern spelling;
   `lsp_fallback = true` is the legacy name conform maps to it internally, written
   out here so it doesn't silently change meaning when the shim goes.
 - `timeout_ms = 3000` — `google-java-format` on a large file is slow enough to
   need it
+
+### Precedence: the global is a master switch
+
+The two flags are **not** independent in effect. `format_on_save` returns early
+if *either* is set, so:
+
+| Global | Buffer | Saves format? |
+|---|---|---|
+| ENABLED | ENABLED | **yes** |
+| **DISABLED** | ENABLED | no — global wins |
+| **DISABLED** | DISABLED | no |
+| ENABLED | **DISABLED** | no — buffer excluded |
+
+Turning the global off does **not** change `vim.b.disable_autoformat` — that
+variable stays exactly as it was. But nothing formats while the global is off,
+whatever any buffer says. Consequently, `:ToggleFormatOnSaveBuffer` to *enable* a
+buffer while the global is off changes nothing observable, so it warns you:
+
+```
+✓ Format on save (buffer): ENABLED
+  ...but format-on-save is still OFF globally, so this buffer
+  will NOT format. Use <leader>tf / :ToggleFormatOnSave.
+```
+
+For the same reason `:FormatStatus` reports the **effective** answer, not just
+the two flags — printing `Global: DISABLED / Buffer: ENABLED` side by side reads
+like the buffer will format, and it will not:
+
+```
+Format on save:
+  Global : DISABLED ✗  (saved on disk: disabled)
+  Buffer : ENABLED ✓  (this session only)
+
+  On save here: WILL NOT FORMAT — the global switch overrides the buffer
+```
+
+### The global toggle is remembered across restarts
+
+`vim.g.disable_autoformat` is a plain global, so it used to die with the
+session: you turned format-on-save off, quit, reopened, and it was **silently
+back on**. That is the worst possible shape for this switch — you turn it off
+precisely because a formatter is mangling a file, and the next time you open
+that file it mangles it again on the first save.
+
+The global preference is now written to
+`stdpath("data")/format_on_save_state`, restored at the top of `M.setup()`, and
+reported by `:FormatStatus`:
+
+```
+Format on save:
+  Global: DISABLED ✗  (saved on disk: disabled)
+  Buffer: ENABLED ✓  (this session only)
+```
+
+Same one-word-state-file pattern as the Copilot toggle in
+[copilot.md](copilot.md), and stored under `stdpath("data")` — **outside this
+git repo** — so the preference follows the machine, not the config.
+
+**Only the global toggle persists.** `:ToggleFormatOnSaveBuffer` deliberately
+does not: a buffer is a session-scoped thing, and a per-file exception that
+silently outlived the session would be much harder to notice than to just set
+again.
+
+> Restoring inside `M.setup()` is safe even though this module is lazy-loaded on
+> `BufWritePre`. lazy.nvim loads the plugin and runs its `config` first, *then*
+> replays the event to the now-loaded plugin — so the flag is already correct
+> before conform's own `BufWritePre` handler asks for it.
 
 ## Formatter arguments and why
 
@@ -99,9 +167,9 @@ Imports belong to jdtls — use `<leader>jo` to organize them deliberately.
 | Command | Action |
 |---|---|
 | `:Format` | Format the buffer, or a `:'<,'>Format` range. Async. |
-| `:ToggleFormatOnSave` | Global toggle |
-| `:ToggleFormatOnSaveBuffer` | Buffer-local toggle |
-| `:FormatStatus` | Report both toggle states |
+| `:ToggleFormatOnSave` | Global toggle — **persisted**, survives a restart |
+| `:ToggleFormatOnSaveBuffer` | Buffer-local toggle — this session only |
+| `:FormatStatus` | Report both toggle states, and the value saved on disk |
 | `:ConformInfo` | conform's own diagnostic view (plugin built-in) |
 
 ## Related

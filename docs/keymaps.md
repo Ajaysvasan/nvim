@@ -85,7 +85,7 @@ version silently ran the wrong command there.
 | Prefix | Now lives in |
 |---|---|
 | `<leader>f*` | [telescope.lua](telescope.md) |
-| `gd`, `gr`, `K`, `<leader>ca`, `<leader>rn`, `<leader>x{d,q}` | [lsp.lua](lsp.md) — buffer-local, via `LspAttach` |
+| `gd`, `gr`, `K`, `<leader>ca`, `<leader>rn`, `<leader>l{d,q}` | [lsp.lua](lsp.md) — buffer-local, via `LspAttach` |
 | `<leader>d*`, `<F5>`–`<F10>` | [dap.lua](dap.md) |
 | `<C-n>` | [neotree.lua](neotree.md) |
 | `<leader>lf` | [conform.lua](conform.md) |

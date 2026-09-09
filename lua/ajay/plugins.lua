@@ -321,7 +321,10 @@ require("lazy").setup({
     -- leader keymap -- before ever saving a file threw "E492: Not an
     -- editor command", because conform.nvim (and the commands it defines)
     -- had never been loaded.
-    cmd = { "ConformInfo", "Format", "ToggleFormatOnSave", "ToggleFormatOnSaveBuffer" },
+    -- FormatStatus was missing here too -- same E492 as the two toggles:
+    -- `:FormatStatus` typed by name, before any save, was "Not an editor
+    -- command". Every command conform.lua defines must be listed.
+    cmd = { "ConformInfo", "Format", "ToggleFormatOnSave", "ToggleFormatOnSaveBuffer", "FormatStatus" },
     keys = {
       { "<leader>lf", mode = { "n", "v" }, desc = "Format buffer" },
       -- The toggles conform.lua registers. `event = BufWritePre` only fires
@@ -524,6 +527,40 @@ require("lazy").setup({
       { "<leader>u", vim.cmd.UndotreeToggle, desc = "Toggle Undo Tree" },
     },
   },
+  -- ── LOG FILES ─────────────────────────────────────────────────────
+  -- Syntax highlighting for plain log output: levels (ERROR/WARN/INFO),
+  -- timestamps, quoted strings, URLs, IPs and Java stack traces.
+  --
+  -- Worth having because Neovim detects NOTHING for a .log file --
+  -- verified, `filetype` and `syntax` both come back empty, so a Spring
+  -- Boot or kafka log is undifferentiated white text and an ERROR line
+  -- looks exactly like an INFO line.
+  --
+  -- Pure syntax: no LSP, no treesitter parser, nothing to compile.
+  {
+    "fei6409/log-highlight.nvim",
+    ft = "log",
+    init = function()
+      -- MUST be `init` (eager), not `config` (on-load): the `ft = "log"`
+      -- trigger above can only fire once something has actually SET the
+      -- filetype to "log", and core Neovim never does. Registering the
+      -- patterns here is what makes the lazy trigger reachable at all.
+      --
+      -- Deliberately conservative -- extension matches only. A tempting
+      -- `.*/logs?/.*` rule would also claim the .java and .xml files that
+      -- live under a logs/ directory in plenty of projects.
+      vim.filetype.add({
+        extension = { log = "log" },
+        pattern = {
+          -- Rotated logs: app.log.1, app.log.2024-01-01
+          [".*%.log%.[%w%-%.]+"] = "log",
+        },
+      })
+    end,
+    config = function()
+      require("log-highlight").setup({})
+    end,
+  },
   {
     -- NOT a standalone expander. wrap_with_abbreviation sends an
     -- `emmet/expandAbbreviation` LSP request and silently returns if
@@ -547,7 +584,12 @@ require("lazy").setup({
       "svelte",
     },
     config = function()
-      vim.keymap.set({ "n", "v" }, "<leader>xe", require("nvim-emmet").wrap_with_abbreviation, {
+      -- <leader>le, not <leader>xe: <leader>x is `:wq` in keymaps.lua, and a
+      -- complete mapping that is also a prefix stalls for 'timeoutlen'
+      -- before firing. See the block in lsp.lua's LspAttach -- the
+      -- diagnostics and workspace maps moved off <leader>x/<leader>w for
+      -- the same reason, and this was the third child of <leader>x.
+      vim.keymap.set({ "n", "v" }, "<leader>le", require("nvim-emmet").wrap_with_abbreviation, {
         desc = "Emmet wrap with abbreviation",
       })
     end,

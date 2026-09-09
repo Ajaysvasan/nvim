@@ -2,7 +2,57 @@
 
 local M = {}
 
+-- ── PERSISTED FORMAT-ON-SAVE STATE ────────────────────────────────
+--
+-- `vim.g.disable_autoformat` is a plain global, so it died with the
+-- session: turn format-on-save off, quit, reopen, and it was silently
+-- back ON. That is the worst shape for this particular switch -- you
+-- turn it off precisely because a formatter is mangling a file, and the
+-- next time you open that file it mangles it again on the first save.
+--
+-- Persisted to disk instead, using the same pattern (and for the same
+-- reason) as the Copilot toggle in copilot.lua: a one-word state file
+-- under stdpath("data"), i.e. outside this git repo, so the preference
+-- follows the machine rather than the config.
+--
+-- Only the GLOBAL toggle persists. The buffer-local one
+-- (:ToggleFormatOnSaveBuffer) deliberately does not -- a buffer is a
+-- session-scoped thing, and a per-file exception that silently outlived
+-- the session would be far harder to notice than to just set again.
+local state_file = vim.fn.stdpath("data") .. "/format_on_save_state"
+
+--- Read the persisted preference.
+--- @return boolean enabled true when format-on-save should be ON
+local function read_state()
+  local f = io.open(state_file, "r")
+  if not f then
+    return true -- no file yet: default ON, matching the old behaviour
+  end
+  local content = f:read("*a")
+  f:close()
+  return content:gsub("%s+", "") ~= "disabled"
+end
+
+--- Persist the preference so it survives a restart.
+--- @param enabled boolean
+local function write_state(enabled)
+  local f = io.open(state_file, "w")
+  if f then
+    f:write(enabled and "enabled" or "disabled")
+    f:close()
+  end
+end
+
 function M.setup()
+  -- Restore BEFORE conform.setup() below registers format_on_save.
+  --
+  -- Safe despite this module being lazy-loaded on BufWritePre: lazy.nvim
+  -- loads the plugin and runs this config function first, then replays
+  -- the event to the now-loaded plugin -- so the flag is already correct
+  -- by the time conform's own BufWritePre handler asks for it. Nothing
+  -- else in the config reads vim.g.disable_autoformat before this point.
+  vim.g.disable_autoformat = not read_state()
+
   local conform_ok, conform = pcall(require, "conform")
   if not conform_ok then
     vim.notify("Conform not installed. Run :Lazy sync", vim.log.levels.WARN)
@@ -50,6 +100,14 @@ function M.setup()
       -- Shell
       sh = { "shfmt" },
       bash = { "shfmt" },
+
+      -- Go
+      go = { "goimports", "gofumpt" },
+
+      -- XML has no entry here on purpose. lemminx (lsp.lua) is a solid
+      -- formatter on its own, and format_on_save below already sets
+      -- lsp_format = "fallback" -- conform reaches for lemminx automatically
+      -- since no formatters_by_ft.xml exists. One less CLI tool to install.
     },
 
     -- Format on save
@@ -137,39 +195,77 @@ function M.setup()
     require("conform").format({ async = true, lsp_format = "fallback", range = range })
   end, { range = true })
 
-  -- Toggle format on save
+  -- Toggle format on save (global) -- and REMEMBER it across restarts.
   vim.api.nvim_create_user_command("ToggleFormatOnSave", function()
-    if vim.g.disable_autoformat then
-      vim.g.disable_autoformat = false
-      vim.notify("✓ Format on save: ENABLED", vim.log.levels.INFO)
+    local enabled = vim.g.disable_autoformat == true -- flipping to this
+    vim.g.disable_autoformat = not enabled
+    write_state(enabled)
+    if enabled then
+      vim.notify("✓ Format on save: ENABLED (saved)", vim.log.levels.INFO)
     else
-      vim.g.disable_autoformat = true
-      vim.notify("✗ Format on save: DISABLED", vim.log.levels.WARN)
+      vim.notify("✗ Format on save: DISABLED (saved, survives restart)", vim.log.levels.WARN)
     end
-  end, { desc = "Toggle format on save" })
+  end, { desc = "Toggle format on save globally, persisted across restarts" })
 
-  -- Toggle format on save for current buffer only
+  -- Toggle format on save for current buffer only.
+  --
+  -- Note the asymmetry with the global toggle: turning the BUFFER back on
+  -- while the GLOBAL is off changes nothing observable, because
+  -- format_on_save ORs the two. Say so rather than let it look broken.
   vim.api.nvim_create_user_command("ToggleFormatOnSaveBuffer", function()
     if vim.b.disable_autoformat then
       vim.b.disable_autoformat = false
-      vim.notify("✓ Format on save (buffer): ENABLED", vim.log.levels.INFO)
+      if vim.g.disable_autoformat then
+        vim.notify(
+          "✓ Format on save (buffer): ENABLED\n"
+            .. "  ...but format-on-save is still OFF globally, so this buffer\n"
+            .. "  will NOT format. Use <leader>tf / :ToggleFormatOnSave.",
+          vim.log.levels.WARN
+        )
+      else
+        vim.notify("✓ Format on save (buffer): ENABLED", vim.log.levels.INFO)
+      end
     else
       vim.b.disable_autoformat = true
       vim.notify("✗ Format on save (buffer): DISABLED", vim.log.levels.WARN)
     end
   end, { desc = "Toggle format on save for current buffer" })
 
-  -- Show format status
+  -- Show format status.
+  --
+  -- Reports the EFFECTIVE answer, not just the two flags. format_on_save
+  -- above combines them with OR -- `vim.g.disable_autoformat or
+  -- vim.b[bufnr].disable_autoformat` -- so the global is a master switch:
+  -- with it off, nothing formats no matter what the buffer says.
+  --
+  -- Printing the two flags side by side without that conclusion was
+  -- actively misleading. With the global off it read
+  --     Global: DISABLED    Buffer: ENABLED
+  -- which looks like this buffer will format. It will not.
+  local function effective_state()
+    local g_off = vim.g.disable_autoformat == true
+    local b_off = vim.b.disable_autoformat == true
+    if g_off then
+      return false, "the global switch overrides the buffer"
+    elseif b_off then
+      return false, "this buffer is excluded"
+    end
+    return true, nil
+  end
+
   vim.api.nvim_create_user_command("FormatStatus", function()
     local global = not vim.g.disable_autoformat
     local buffer = not vim.b.disable_autoformat
+    local eff, why = effective_state()
 
     local status = string.format(
-      "Format on save:\n  Global: %s\n  Buffer: %s",
+      "Format on save:\n  Global : %s  (saved on disk: %s)\n  Buffer : %s  (this session only)\n\n  On save here: %s",
       global and "ENABLED ✓" or "DISABLED ✗",
-      buffer and "ENABLED ✓" or "DISABLED ✗"
+      read_state() and "enabled" or "disabled",
+      buffer and "ENABLED ✓" or "DISABLED ✗",
+      eff and "WILL FORMAT" or ("WILL NOT FORMAT — " .. why)
     )
-    vim.notify(status, vim.log.levels.INFO)
+    vim.notify(status, eff and vim.log.levels.INFO or vim.log.levels.WARN)
   end, { desc = "Show format on save status" })
 
   -- Keymaps

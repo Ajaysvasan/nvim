@@ -88,6 +88,11 @@ local ensure_servers = {
   -- sends emmet/expandAbbreviation over LSP and does NOTHING if no server
   -- answers. That keymap was silently dead until this server existed.
   "emmet_language_server",
+  "gopls",
+  -- lemminx. Also covers pom.xml (see the treesitter "xml" entry) and
+  -- Android/Spring XML config -- no settings needed, lspconfig's own
+  -- defaults (filetypes, root_markers) are already right for it.
+  "lemminx",
 }
 
 local ensure_tools = {
@@ -103,6 +108,11 @@ local ensure_tools = {
   "stylua",
   "google-java-format",
   "shfmt",
+  -- goimports first (adds/removes imports, and runs gofmt itself), then
+  -- gofumpt (a stricter gofmt superset) -- same import-fixer-then-formatter
+  -- shape as isort+black above.
+  "goimports",
+  "gofumpt",
 }
 
 -- Deliberately NOT called at load time -- see "Mason, on demand" at the
@@ -168,6 +178,18 @@ vim.lsp.config("pyright", {
   },
 })
 
+vim.lsp.config("gopls", {
+  settings = {
+    gopls = {
+      staticcheck = true,
+      analyses = {
+        unusedparams = true,
+        shadow = true,
+      },
+    },
+  },
+})
+
 vim.lsp.config("lua_ls", {
   settings = {
     Lua = {
@@ -220,6 +242,34 @@ vim.lsp.config("tailwindcss", {
   },
 })
 
+-- ── Neovim 0.11's built-in gr* maps ────────────────────────────────
+--
+-- 0.11 added a global LSP mapping family in runtime/lua/vim/_defaults.lua:
+--
+--   grn  rename          gra  code action      grr  references
+--   gri  implementation  grt  type definition  grx  run code lens
+--
+-- Every one of those is ALREADY mapped somewhere in this config, by an
+-- older and shorter binding:
+--
+--   grr -> gr          gri -> gi          grt -> gt
+--   grn -> <leader>rn  gra -> <leader>ca  grx -> <leader>cl
+--
+-- So they add nothing -- and they cost something real. `gr` (go to
+-- references) is a complete mapping AND the prefix of all six, which
+-- makes it ambiguous: Neovim cannot jump until 'timeoutlen' expires, so
+-- every single "find references" sat for 400ms first. On a Java project
+-- that is one of the most-pressed keys there is.
+--
+-- Deleting the redundant defaults restores an instant `gr` and loses no
+-- functionality. pcall'd individually because the exact set differs
+-- between 0.11 and 0.12, and a missing one must not abort the rest.
+--
+-- Want them back? Delete this loop -- the built-ins return on restart.
+for _, lhs in ipairs({ "grn", "gra", "grr", "gri", "grt", "grx" }) do
+  pcall(vim.keymap.del, "n", lhs)
+end
+
 -- ── Shared attach behaviour ────────────────────────────────────────
 vim.api.nvim_create_autocmd("LspAttach", {
   group = vim.api.nvim_create_augroup("ajay_lsp_attach", { clear = true }),
@@ -260,27 +310,61 @@ vim.api.nvim_create_autocmd("LspAttach", {
     map("n", "<leader>rn", vim.lsp.buf.rename, "Rename symbol")
     map({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, "Code action")
 
-    -- Diagnostics. The old config put these on <leader>e / <leader>q,
-    -- which shadowed `:q<CR>` from keymaps.lua inside every LSP buffer,
-    -- and the whole <leader>d prefix belongs to nvim-dap. Moved to <leader>x.
+    -- ── THE TIMEOUTLEN BUG, TWICE ────────────────────────────────
+    --
+    -- These used to live on <leader>x* (diagnostics) and <leader>w*
+    -- (workspace folders). Both prefixes were ALREADY COMPLETE mappings
+    -- in keymaps.lua:
+    --
+    --   <leader>w  ->  :w<CR>    save file
+    --   <leader>x  ->  :wq<CR>   save and quit
+    --
+    -- A mapping that is both complete AND the prefix of a longer one is
+    -- ambiguous, so Neovim cannot act on it until 'timeoutlen' expires.
+    -- Registering <leader>wa/wr/wl buffer-locally meant that in EVERY
+    -- buffer a language server attached to -- i.e. every code file --
+    -- pressing <leader>w sat there for 400ms before saving. Same for
+    -- <leader>x, which also collides with <leader>xe (emmet).
+    --
+    -- This is the exact bug keymaps.lua documents fixing for <leader>h,
+    -- reintroduced from the other direction: there the prefix was moved,
+    -- here the CHILDREN are, because save/save-and-quit are the two most
+    -- pressed keys in the config and must stay instant.
+    --
+    -- Everything language-server-ish now lives under <leader>l, which was
+    -- free apart from <leader>lf (format, conform.lua) and is not itself
+    -- a mapping -- so nothing here is ambiguous with anything.
+    --
+    --   <leader>lf   format          (conform.lua)
+    --   <leader>ld   show diagnostic
+    --   <leader>lq   diagnostic list
+    --   <leader>lw{a,r,l}  workspace folder add/remove/list
     map("n", "[d", function()
       vim.diagnostic.jump({ count = -1, float = true })
     end, "Previous diagnostic")
     map("n", "]d", function()
       vim.diagnostic.jump({ count = 1, float = true })
     end, "Next diagnostic")
-    map("n", "<leader>xd", vim.diagnostic.open_float, "Show diagnostic")
-    map("n", "<leader>xq", vim.diagnostic.setloclist, "Diagnostic list")
+    map("n", "<leader>ld", vim.diagnostic.open_float, "Show diagnostic")
+    map("n", "<leader>lq", vim.diagnostic.setloclist, "Diagnostic list")
 
     -- Workspace
-    map("n", "<leader>wa", vim.lsp.buf.add_workspace_folder, "Add workspace folder")
-    map("n", "<leader>wr", vim.lsp.buf.remove_workspace_folder, "Remove workspace folder")
-    map("n", "<leader>wl", function()
+    map("n", "<leader>lwa", vim.lsp.buf.add_workspace_folder, "Add workspace folder")
+    map("n", "<leader>lwr", vim.lsp.buf.remove_workspace_folder, "Remove workspace folder")
+    map("n", "<leader>lwl", function()
       print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
     end, "List workspace folders")
 
     -- tsserver formatting off — conform/prettier owns JS/TS.
     if client.name == "ts_ls" then
+      client.server_capabilities.documentFormattingProvider = false
+      client.server_capabilities.documentRangeFormattingProvider = false
+    end
+
+    -- Same move for gopls — conform/goimports+gofumpt owns Go formatting,
+    -- so gopls's own (plain gofmt-equivalent) formatter should never be
+    -- what a stray vim.lsp.buf.format() call reaches for instead.
+    if client.name == "gopls" then
       client.server_capabilities.documentFormattingProvider = false
       client.server_capabilities.documentRangeFormattingProvider = false
     end

@@ -32,6 +32,7 @@ local ensure_installed = {
   "cpp",
   "python",
   "java",
+  "go",
   "javascript",
   "typescript",
   "tsx",

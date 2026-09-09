@@ -35,7 +35,7 @@ end
 `lsp.lua` drives **every** language server, so a missing `ajay/icons.lua` must not
 take all of them down — it should cost you pretty gutter symbols, nothing more.
 The warning is deferred with `vim.schedule` so it can't abort startup.
-| `virtual_text.severity` | `min = ERROR` | Only errors get inline text. Warnings and hints would otherwise cover the code you're reading; they still show in the gutter and on `<leader>xd`. |
+| `virtual_text.severity` | `min = ERROR` | Only errors get inline text. Warnings and hints would otherwise cover the code you're reading; they still show in the gutter and on `<leader>ld`. |
 | `virtual_text.spacing` | `2` | |
 | `float` | `border = "rounded"`, `source = true` | Shows *which* server produced the message — essential when `eslint` and `ts_ls` disagree |
 | `severity_sort` | `true` | The worst problem on a line wins the sign |
@@ -49,7 +49,7 @@ The warning is deferred with `vim.schedule` so it can't abort startup.
 | Server | Attaches to | Note |
 |---|---|---|
 | `angularls` | `typescript`, `html`, `typescriptreact`, `htmlangular` | **Gated to real Angular workspaces**, see below |
-| `emmet_language_server` | `html`, `htmlangular`, `css`, `scss`, `less`, `javascriptreact`, `typescriptreact` | Required by [nvim-emmet](plugins.md) — `<leader>xe` is inert without it |
+| `emmet_language_server` | `html`, `htmlangular`, `css`, `scss`, `less`, `javascriptreact`, `typescriptreact` | Required by [nvim-emmet](plugins.md) — `<leader>le` is inert without it |
 
 `mason-lspconfig` is configured with `automatic_enable = { exclude = { "jdtls" } }`
 — but **only when it is loaded at all**, see [Mason, on demand](#mason-on-demand).
@@ -283,20 +283,29 @@ server actually attached.
 |---|---|
 | `[d` | Previous diagnostic (with float) |
 | `]d` | Next diagnostic (with float) |
-| `<leader>xd` | Show diagnostic under cursor |
-| `<leader>xq` | Send diagnostics to the location list |
+| `<leader>ld` | Show diagnostic under cursor |
+| `<leader>lq` | Send diagnostics to the location list |
 
-> **Why `<leader>x`:** the old config put these on `<leader>e` / `<leader>q`,
-> which shadowed `:q<CR>` from `keymaps.lua` inside every LSP buffer. And the
-> whole `<leader>d` prefix belongs to [nvim-dap](dap.md).
+> **Why `<leader>l`:** these were on `<leader>e` / `<leader>q` originally, which
+> shadowed `:q<CR>` from `keymaps.lua` inside every LSP buffer, and the whole
+> `<leader>d` prefix belongs to [nvim-dap](dap.md). They then moved to
+> `<leader>x*` — which turned out to be the same bug from the other direction:
+> `<leader>x` is `:wq` in `keymaps.lua`, so a *complete* mapping was also the
+> *prefix* of these, and Neovim has to wait out `timeoutlen` (400ms) before it
+> can tell which you meant. Every save-and-quit stalled. `<leader>l` is the
+> language-server group and is not itself a mapping, so nothing is ambiguous.
 
 ### Workspace
 
 | Key | Action |
 |---|---|
-| `<leader>wa` | Add workspace folder |
-| `<leader>wr` | Remove workspace folder |
-| `<leader>wl` | List workspace folders |
+| `<leader>lwa` | Add workspace folder |
+| `<leader>lwr` | Remove workspace folder |
+| `<leader>lwl` | List workspace folders |
+
+> These were `<leader>wa` / `<leader>wr` / `<leader>wl`, and caused the same
+> stall on `<leader>w` (save file) — the single most pressed key in the config —
+> in every buffer a language server attached to.
 
 ### CodeLens
 

@@ -68,7 +68,18 @@ local function define_notebook_highlights()
   vim.api.nvim_set_hl(0, "NotebookActiveCell", { link = "CursorLine", default = true })
 end
 
+-- BUG FIX: this used to read the WHOLE buffer on every call, and it is
+-- called from CursorMoved, TextChanged, BufEnter and InsertLeave -- i.e.
+-- on nearly every keystroke and every cursor move. For an ordinary buffer
+-- that is a few hundred lines, invisible. For a large generated .py file
+-- (a big test fixture, a notebook export) it is exactly the O(file)-per-
+-- edit cost ajay/bigfile.lua exists to eliminate -- just never guarded
+-- here, since this module predates the bigfile gate. Same flag, checked
+-- the same way cmp.lua's buffer source already does.
 local function has_cell_markers(bufnr)
+  if vim.b[bufnr].bigfile then
+    return false
+  end
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   for _, line in ipairs(lines) do
     if line:sub(1, 4) == "# %%" then

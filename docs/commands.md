@@ -14,9 +14,9 @@ except where noted.
 | Command | Module | Action |
 |---|---|---|
 | `:Format` | [conform](conform.md) | Format the buffer or a `:'<,'>Format` range, async |
-| `:ToggleFormatOnSave` | conform | Global format-on-save toggle |
-| `:ToggleFormatOnSaveBuffer` | conform | Buffer-local toggle |
-| `:FormatStatus` | conform | Report both toggle states |
+| `:ToggleFormatOnSave` | conform | Global format-on-save toggle — **persisted to disk, survives a restart** |
+| `:ToggleFormatOnSaveBuffer` | conform | Buffer-local toggle — this session only |
+| `:FormatStatus` | conform | Report both toggle states plus the value saved on disk |
 | `:ConformInfo` | conform *(plugin built-in)* | Which formatter would run here, and is it installed |
 
 ## LSP
@@ -54,6 +54,7 @@ except where noted.
 | `:SpringBootRun` | springboot | `./mvnw spring-boot:run` / `./gradlew bootRun` |
 | `:SpringBootBuild` | springboot | `./mvnw clean install` / `./gradlew build` |
 | `:SpringBootTest` | springboot | `./mvnw test` / `./gradlew test` |
+| `:SpringBootStop` | springboot | Stop every running Spring Boot task (they are background jobs now, not blocking `:!`) |
 | `:JavaNew` | [java-creator](java-creator.md) | New Java file GUI (`<leader>jN`); available once a Java file is open |
 
 ## Copilot

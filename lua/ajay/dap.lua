@@ -171,7 +171,23 @@ if ok_mason_dap then
       "python", -- debugpy
       "js", -- js-debug-adapter (TS/JS/Node *and* Chrome)
       "codelldb", -- C / C++ / Rust
-      -- Java is handled by nvim-jdtls + java-debug-adapter, see below
+      -- Java: the comment used to say "see below" and nothing was ever
+      -- there. Without these two, jdtls.lua's collect_bundles() finds
+      -- nothing under mason/packages/java-debug-adapter and
+      -- mason/packages/java-test, silently hands jdtls an empty
+      -- `bundles = {}`, and setup_dap() below still registers the java
+      -- adapter -- so <leader>dc looks fine right up until you actually
+      -- try to hit a breakpoint, and <leader>jt/<leader>jn (JUnit debug)
+      -- have nothing to run against. Same failure mode as the Lombok
+      -- jar, minus the warning: it fails quiet instead of loud.
+      --
+      -- These are mason-nvim-dap's OWN adapter aliases (see
+      -- mason-nvim-dap/mappings/source.lua), not raw Mason package
+      -- names -- ensure_installed resolves through that alias table, so
+      -- the literal package names "java-debug-adapter"/"java-test" would
+      -- silently no-op here instead of installing anything.
+      "javadbg",
+      "javatest",
       --
       -- Two entries were removed here:
       --

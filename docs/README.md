@@ -7,6 +7,10 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 
 - **[keymap-reference.md](keymap-reference.md)** — the complete cheat sheet, every mapping in one table
 - **[commands.md](commands.md)** — every custom `:Command` this config defines
+- **[api.md](api.md)** — **extending this config**: module contract, `vim.g` /
+  `vim.b` extension points, recipes for adding a language / plugin / keymap, and
+  the invariants that fail silently if you break them. Start here if you are
+  making changes rather than just using it.
 
 ## Core
 

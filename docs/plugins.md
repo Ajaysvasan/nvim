@@ -146,10 +146,10 @@ telescope.nvim, undotree
 The `keys = { ... }` entries in this file are **lazy-load triggers only** — they
 declare the key and a description so lazy.nvim knows when to load the plugin.
 The real mapping is defined in the plugin's module. The one exception is
-`<leader>u` (undotree) and `<leader>xe` (emmet), which are defined inline
+`<leader>u` (undotree) and `<leader>le` (emmet), which are defined inline
 because those plugins have no module file.
 
 | Key | Action | Defined |
 |---|---|---|
 | `<leader>u` | Toggle undo tree | inline in the spec |
-| `<leader>xe` | Emmet: wrap with abbreviation (n, v) | inline in the spec |
+| `<leader>le` | Emmet: wrap with abbreviation (n, v) | inline in the spec |

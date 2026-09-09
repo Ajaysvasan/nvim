@@ -63,10 +63,49 @@ After creation it reminds you to `:cd <project>`.
 | `<leader>sr` | Run the application | `./mvnw spring-boot:run` or `./gradlew bootRun` |
 | `<leader>sb` | Build | `./mvnw clean install` or `./gradlew build` |
 | `<leader>st` | Run tests | `./mvnw test` or `./gradlew test` |
+| `<leader>sx` | Stop any running task | `jobstop` on every live task |
 
-Run/build/test use `:!` (a blocking shell command), not a terminal split — output
-appears in the message area and Neovim waits for the process. For a long-running
-`bootRun`, `:split | terminal ./mvnw spring-boot:run` is more comfortable.
+### Tasks run in a terminal buffer, not `:!`
+
+These used to run through `vim.cmd("!" .. cmd)`. `:!` is **synchronous** —
+measured, `:!sleep 3` returns after 3.2 s while the same command in a terminal
+returns in 0.1 s. For `mvn test` that is merely annoying; for `:SpringBootRun`,
+which starts a server that lives until you stop it, it meant **Neovim was frozen
+for the entire life of the application**.
+
+It was also the wrong place to send logs. `:!` output goes to the message area,
+not a buffer, so a Spring Boot startup trace or a stack trace could not be
+scrolled, searched with `/`, yanked, or sent to the quickfix list. A terminal
+buffer gives you all of that. (The rest of the config already did this — the
+`<leader>rp` / `<leader>rj` run-file keymaps in [keymaps.md](keymaps.md) have
+always used `split | terminal`; these commands were simply inconsistent.)
+
+`jobstart()` is called in **list form with `cwd`**, not as a shell string, so
+there is no `cd … &&` prefix to quote and no `escape(cmd, "%#")` dance — a
+project path containing a space or a `%` cannot break or silently misfire.
+
+**Window behaviour:**
+
+- The task opens in a bottom split, named `spring-boot://<project>/<task>`.
+- It opens in **normal mode**, so you can scroll and search the log immediately
+  without pressing `<C-\><C-n>` first.
+- A **finished** task's window is recycled by the next task, and its buffer
+  wiped — otherwise every run left another dead terminal in `:ls`.
+- A **running** task keeps its window; a new task opens its own split. Recycling
+  it would kill your running application as a side effect of asking for
+  something unrelated.
+
+> ⚠️ Because these are real background jobs now, a Spring Boot app **keeps
+> running** if you just close its window — and an orphaned app still holds port
+> 8080, which resurfaces as a baffling "port already in use" on the next
+> `:SpringBootRun`. Use `<leader>sx` / `:SpringBootStop`.
+
+> The terminal remembers its project on the buffer (`b:springboot_root`). Without
+> that, the *second* command was broken: after the first one the current buffer
+> is the terminal, and `project_root()` searching upward from
+> `spring-boot://demo/run` found nothing — so `:SpringBootTest` right after
+> `:SpringBootRun` reported "this does not look like a Maven or Gradle project"
+> while sitting inside the project.
 
 ## Commands
 
@@ -76,6 +115,7 @@ appears in the message area and Neovim waits for the process. For a long-running
 | `:SpringBootRun` | `<leader>sr` |
 | `:SpringBootBuild` | `<leader>sb` |
 | `:SpringBootTest` | `<leader>st` |
+| `:SpringBootStop` | `<leader>sx` — stop every running Spring Boot task |
 
 ## Debugging a Spring Boot app
 
@@ -87,6 +127,19 @@ appears in the message area and Neovim waits for the process. For a long-running
 
 then `<leader>dc` in Neovim and pick **Attach to remote JVM** — see
 [dap.md](dap.md).
+
+## Reading the logs
+
+The task terminal is a normal buffer, so `/`, `?`, `n`, `G` and `y` all work on
+it. Beyond that:
+
+- **Log files** (`*.log`, and rotated `*.log.1` / `*.log.2024-01-01`) get syntax
+  highlighting from `log-highlight.nvim` — ERROR maps to `ErrorMsg`, WARN to
+  `WarningMsg`, timestamps, IPs and quoted strings each get their own group.
+  Neovim detects **nothing** for `.log` on its own, so the filetype rule that
+  makes this work is registered in [plugins.md](plugins.md).
+- **Grep a log into the quickfix list** with `<leader>fg`, then `<C-q>` in the
+  Telescope prompt — see [telescope.md](telescope.md).
 
 ## Related
 

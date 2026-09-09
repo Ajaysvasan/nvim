@@ -12,6 +12,12 @@ Every speed decision in the config, in one place. Three separate concerns:
 | `nvim` (no file) | ~19.5 ms | **15.4 ms** |
 | `nvim <file>` | ~53.5 ms | **32.8 ms** |
 | `nvim Main.java` (in a Maven project) | 762 ms | **196 ms** |
+| `nvim <file>.java` (in kafka, 6 178 Java files) | 108 ms | **68 ms** |
+
+The kafka row is the newest measurement and came from caching the JDK probe to
+disk — see [Then cached to disk](#then-cached-to-disk--108-ms--68-ms-on-kafka).
+It is lower than the Maven row above because that 196 ms figure predates the
+disk cache.
 
 Re-measured after the language-server fixes (`angularls` and
 `emmet_language_server` added, `eslint_d` dropped): **unchanged**. Enabling a
@@ -33,6 +39,70 @@ The numbers people actually feel. Same machine, warm caches:
 | Buffer switch `:bnext` | **3.24 ms** | With a 5 000-line buffer in the ring |
 | Treesitter incremental reparse | **1.44 ms** median, 2.19 ms worst | After an edit, 5 000 lines |
 | Treesitter **first** parse | **142.8 ms** | One-time per buffer, 5 000 lines |
+
+### Readiness on a real monorepo — `~/Documents/kafka`
+
+Synthetic files only tell you so much. Measured against kafka itself (~6 200
+Java files, 567 MB, 20+ Gradle modules) with a warm jdtls workspace:
+
+| Milestone | Time |
+|---|---|
+| Buffer drawn | **108 ms** |
+| jdtls attached | 3.0 s |
+| First diagnostics | 4.9 s |
+| Completion, cold | 98 ms |
+| Completion, warm | 34 ms |
+| Hover | 151 ms |
+| Go to definition | 4 ms |
+| 2nd Java file (jdtls warm) | 190 ms |
+
+And the editing path itself, in the same repo:
+
+| What | Time |
+|---|---|
+| Typing, 1 831-line file | **0.117 ms** avg, 1.85 ms worst |
+| Scrolling, 10 073-line file | **0.03 ms** per page |
+| Buffer switch (4 buffers, mkview/loadview live) | **0.6 ms** |
+| Opening a 30 692-line file | 11 ms — correctly gated by [bigfile](bigfile.md) |
+
+#### Is the ~3 s attach a bottleneck? No — measured, it is 2 s of JVM
+
+The obvious suspicion is that kafka's size causes it. It does not. Attaching to
+a **one-file Maven project** was measured for comparison, and then again with
+the debug bundles removed, which decomposes the whole number:
+
+| Component | Time | Reducible? |
+|---|---|---|
+| JVM boot + Eclipse OSGi framework | **~1 950 ms** | No — this is what jdtls *is* |
+| 32 `java-debug-adapter` + `java-test` bundle jars | **~417 ms** | Only by giving up `<leader>db` and `<leader>jt` |
+| kafka's 6 178 files across 20+ Gradle modules | **~490 ms** | No |
+| **Total** | **~2 857 ms** | |
+
+| Project | attach | first diagnostics |
+|---|---|---|
+| 1 Java file, Maven | 2 367 ms | 3 952 ms |
+| 1 Java file, no debug bundles | 1 950 ms | 3 586 ms |
+| kafka (6 178 files) | 2 857 ms | 7 889 ms |
+
+So **~68 % of the attach is fixed cost** that no setting in this config touches,
+and going from one file to a 6 000-file monorepo adds only ~0.5 s. That is the
+opposite of a bottleneck — it is jdtls scaling well.
+
+**Diagnostics** are the part that genuinely scales with project size (3.9 s →
+7.9 s), because the classpath for the compilation unit has to be resolved
+against every module. Also once per session, and the editor is fully usable
+while it happens — see [LSP attach does not block](#lsp-attach-does-not-block).
+
+The 417 ms for bundles is the price of Java debugging working at all; without
+them `<leader>db` sets a breakpoint that never binds and `<leader>jt` has
+nothing to run. Worth knowing, not worth removing.
+
+> **A number that did not survive re-measurement.** One run showed a 14.4 s cold
+> completion and it looked like *the* bottleneck. It did not reproduce — two
+> further runs measured 98 ms and 118 ms. It was jdtls doing background work
+> after benchmark runs had disturbed the workspace, not a property of the
+> config. Recorded here because "measure it twice before you tune it" is the
+> actual lesson; nothing was changed on the strength of it.
 
 ### The JDK scan was the worst offender — 762 ms → 196 ms
 
@@ -58,6 +128,50 @@ identical behaviour afterwards — same launcher (Zulu 21), same runtimes
 **The lesson generalises:** anything calling `vim.fn.system()` on a buffer event
 should be assumed to run more often than you think, and cached unless the answer
 can actually change between calls.
+
+#### Then cached to disk — 108 ms → 68 ms on kafka
+
+Re-measured against a real monorepo (`~/Documents/kafka`, ~6 200 Java files, 20+
+Gradle modules) the memo turned out not to be the end of it. It is a *session*
+memo, so the probe still ran **once per session**, on the first Java file you
+open, and all of it is blocking subprocess work:
+
+| Call | Cost |
+|---|---|
+| `/usr/libexec/java_home -V` | 41 ms |
+| `unzip -p <jdt core jar> META-INF/MANIFEST.MF` | 17 ms |
+| `java -version` (per JDK it cannot version otherwise) | 48 ms each |
+
+That is exactly why the **first** Java file measured 108 ms while every one
+after it measured 7 ms. The set of installed JDKs changes when you install a
+JDK — roughly never — so paying it every session is pure waste.
+
+It is now persisted to `stdpath("cache")/ajay-jdtls-probe.json`. Invalidation is
+the whole game, and it is deliberately cheap:
+
+- **Every cached JDK path is re-checked with `executable()`** — an fs stat,
+  microseconds, not a subprocess. A JDK you deleted or moved invalidates the
+  cache instead of being handed to Eclipse as a runtime that no longer exists.
+  `has_javac` is re-stat'd too, since that is what decides whether an entry is a
+  valid Eclipse runtime at all.
+- **The jdtls jar filename is part of the key**, and it carries the version
+  (`org.eclipse.jdt.ls.core_1.60.0.202606262232.jar`), so a Mason upgrade re-reads
+  the manifest rather than trusting a stale minimum.
+- **`:JdtlsRescanJDKs` deletes the file**, then re-probes.
+
+| | Session memo only | Plus disk cache |
+|---|---|---|
+| JDK probe | 34.8 ms | **0.2 ms** |
+| `nvim <kafka java file>` | 108 ms | **68 ms** |
+
+Verified afterwards: same launcher (Zulu 21), same `-Xmx4g`, exactly one client,
+and no new globals leaked into `_G`.
+
+> A latent bug surfaced while doing this. `:JdtlsRescanJDKs` has to reset
+> `cached_min`, but that local was declared *further down the file* than the
+> command — and a `local` declared later is not in scope for a closure defined
+> earlier, so the assignment would have silently created a **global** and never
+> cleared the real cache. It is forward-declared now, next to `cached_jdks`.
 
 ### Opening files: cold vs warm
 
@@ -182,11 +296,43 @@ to real, writable files *and* skip `vim.b.bigfile` buffers.
 Measured cost: **0.30 ms** per switch, rising to **3.24 ms** once a 5 000-line
 buffer is in the ring — see [Responsiveness, measured](#responsiveness-measured).
 
+### Navigation, measured on kafka
+
+24 000 files, 6 178 of them Java, 567 MB. The raw tools are the floor Telescope
+cannot beat, so both are listed:
+
+| What | Time | Floor (raw tool) |
+|---|---|---|
+| `find_files` → first 1 000 results | **92 ms** | `fd` = 80 ms |
+| `find_files` → fully populated (7 454) | ~4 s (streaming; usable throughout) | |
+| `live_grep "KafkaProducer"` → first 50 | **85 ms** | `rg` = 220 ms full scan |
+| `live_grep` → settled (606 results) | ~5 s (streaming) | |
+| Preview render, per selection move | **2.9 ms** avg, 5.2 ms worst | |
+| Neo-tree open at kafka root | **53 ms** | |
+
+Both pickers *stream* — results appear at essentially the speed of `fd`/`rg` and
+keep filling while you type, so the "settled" figures are not a wait you feel.
+
+The **53 ms** neo-tree figure is the interesting one: `follow_current_file` is on,
+so opening the tree from a file 8 directories deep expands that entire path
+(121 rows rendered) rather than just listing the root.
+
+Preview cost was re-checked after `preview_width` was raised to `0.6` (see
+[telescope.md](telescope.md)): **2.9 ms**. A wider preview costs nothing extra —
+the previewer's work scales with the *lines* it highlights, not the columns.
+
+> Measured in a real terminal, not headless. Telescope's previewer never renders
+> under `--headless` because there is no UI to drive it, so a headless run
+> reports zero preview cost and is simply wrong.
+
 ### Large files
 
 [`bigfile.lua`](bigfile.md) is the whole story — a 1 MB / 2000-column gate that
 switches off treesitter, regex syntax, LSP, codelens, git signs, indent guides,
 format-on-save, undofile and `relativenumber`.
+
+Confirmed against kafka: a 30 692-line Java file opens in **11 ms** with
+treesitter off and no LSP attached, while a 10 073-line file keeps both.
 
 ---
 

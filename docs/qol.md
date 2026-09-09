@@ -63,9 +63,9 @@ typescriptreact, vue, svelte`.
 
 | Key | Mode | Action |
 |---|---|---|
-| `<leader>xe` | n, v | Wrap the selection with an Emmet abbreviation |
+| `<leader>le` | n, v | Wrap the selection with an Emmet abbreviation |
 
-Select some text, press `<leader>xe`, type something like `div.card>ul>li*3`, and
+Select some text, press `<leader>le`, type something like `div.card>ul>li*3`, and
 it expands around the selection.
 
 ### It needs a language server
@@ -76,18 +76,23 @@ answers — no error, no message, the key just does nothing.
 
 That is exactly what happened until `emmet_language_server` was added to
 `ensure_servers` in [lsp.md](lsp.md): the plugin was installed, the keymap was
-mapped, and `<leader>xe` had never once worked.
+mapped, and the emmet key had never once worked.
 
 The filetype list above is `emmet-language-server`'s own, minus templating
 languages this config has no other support for. It previously omitted
 `htmlangular`, `scss` and `less` — three filetypes where the server *does*
 attach but the keymap did not even exist.
 
-> `<leader>x` is otherwise the LSP diagnostics prefix (`<leader>xd`, `<leader>xq`
-> — see [lsp.md](lsp.md)), and `<leader>x` alone is "save and quit" from
-> [keymaps.md](keymaps.md). All three are distinct sequences, but note that the
-> bare `<leader>x` save-and-quit will wait `timeoutlen` in emmet filetypes before
-> firing.
+> **This key used to be `<leader>xe`, and that was a bug** — one this page
+> already described and lived with: `<leader>x` alone is "save and quit" from
+> [keymaps.md](keymaps.md), so a *complete* mapping was also the *prefix* of
+> `<leader>xe`, and Neovim could not fire it until `timeoutlen` (400ms) expired.
+> Every save-and-quit in an emmet filetype stalled.
+>
+> It is now `<leader>le`, in the `<leader>l` language-server group alongside
+> `<leader>lf` (format) and `<leader>ld` / `<leader>lq` (diagnostics — which
+> moved off `<leader>x*` for exactly the same reason). `<leader>l` is not itself
+> a mapping, so nothing in that group is ambiguous. See [lsp.md](lsp.md).
 
 ## rainbow-delimiters.nvim
 

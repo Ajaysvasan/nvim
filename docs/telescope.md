@@ -14,6 +14,41 @@ entire `<leader>f` namespace plus the Git pickers.
 | `path_display` | `{ "truncate" }` | Truncates from the left, so the filename stays visible on long paths |
 | `file_ignore_patterns` | `node_modules`, `.git/`, `dist/`, `build/`, `target/`, `*.class`, `__pycache__`, `*.pyc` | Build output and dependency trees swamp results otherwise. `target/` and `*.class` matter specifically for the Java/Maven workflow. Note the tree still *shows* these — this only filters search. |
 | `vimgrep_arguments` | explicit `rg` invocation | `--smart-case` matches the editor's own `ignorecase` + `smartcase`; `--trim` keeps deeply indented matches readable in a narrow results pane |
+| `layout_config` | `width = 0.95`, `height = 0.95`, `preview_width = 0.6` | See below — the default preview was far too narrow to read code in |
+
+### The preview was too small to read code in
+
+`live_grep` felt unusable for anything longer than a one-line match, and the
+reason is not obvious from the docs: **`preview_width` does not default to a
+percentage — it defaults to a function**, and it is applied to the *window*
+width, which is itself only `0.8` of the screen:
+
+```lua
+cols < 150 -> math.floor(cols * 0.4)
+cols < 200 -> 80    -- fixed
+else       -> 120   -- fixed
+```
+
+So on a 120-column terminal the window is 96 columns and the preview gets
+`floor(96 * 0.4)` = **38 columns**. Almost every real line of code wraps or
+truncates at that width. Even on a very wide terminal it is capped at a fixed
+120 columns and stops scaling.
+
+Setting the values explicitly roughly doubles it, and keeps it scaling:
+
+| Terminal | Preview before | Preview now |
+|---|---|---|
+| 100 cols | 32 | **57** |
+| 120 cols | 38 | **68** |
+| 160 cols | 51 | **91** |
+| 200 cols | 80 | **114** |
+| 250 cols | 120 | **142** |
+
+This lives in `defaults`, so **every picker with a previewer** benefits —
+`live_grep`, `grep_string`, `oldfiles`, `diagnostics`, `help_tags`. The pickers
+below that set `theme = "dropdown"` / `"cursor"` are unaffected: a theme
+overrides `layout_strategy` and `layout_config`, and those pickers have
+`previewer = false` anyway.
 
 ### `find_files` drives `fd` directly
 
@@ -42,6 +77,17 @@ and Telescope falls back to its own finder. Still works, just slower.
 | `<C-q>` | Send to quickfix and open it | Turns a search into a work list |
 | `<C-x>` | Delete buffer | |
 | `<Esc>` | Close | One press closes instead of dropping to normal mode |
+| `<C-o>` | Cycle layout: horizontal ⇄ vertical | "**o**rientation". Vertical gives the preview the **full window width**, so a long line reads end to end instead of truncating. Worth a key rather than a permanent choice — the same search wants a different shape depending on how wide the code is. |
+
+> **Why `<C-o>` and not something more obvious:** Telescope's own defaults
+> already claim nearly every control key in the prompt — `<C-l>` is
+> `complete_tag`, `<C-p>` is `move_selection_previous`, `<C-k>`/`<C-f>` scroll
+> the preview, `<C-v>`/`<C-x>`/`<C-t>` open splits, `<C-u>`/`<C-d>` scroll it.
+> `<C-o>` and `<C-y>` are the only obvious keys left unbound in *both* insert
+> and normal mode. Press `<C-/>` in any picker for the full live list.
+>
+> Note that telescope's mappings are **picker-local** — they apply only while a
+> prompt is open and cannot shadow anything global.
 
 ### Normal-mode mappings inside a picker
 
@@ -49,6 +95,7 @@ and Telescope falls back to its own finder. Still works, just slower.
 |---|---|
 | `q` | Close |
 | `<C-x>` | Delete buffer |
+| `<C-o>` | Cycle layout: horizontal ⇄ vertical |
 | `dd` | Delete buffer (buffers picker only) |
 
 ### Per-picker themes
