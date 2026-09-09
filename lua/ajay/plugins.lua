@@ -207,6 +207,15 @@ require("lazy").setup({
   {
     "neovim/nvim-lspconfig",
     event = { "BufReadPre", "BufNewFile" },
+    -- lsp.lua defines these three, and `event` alone does not make an Ex
+    -- command exist -- only `cmd` does. Without this they were "E492: Not
+    -- an editor command" until a file had been opened.
+    --
+    -- :MasonSync is the one that actually stung: it is the "go install
+    -- whatever tooling is missing" command, so the moment you most want it
+    -- is a cold editor on the dashboard -- exactly where it did not exist.
+    -- Same bug as :ToggleFormatOnSave and :FormatStatus in the conform spec.
+    cmd = { "MasonSync", "ToggleCodeLens", "ToggleInlayHints" },
     dependencies = { "hrsh7th/cmp-nvim-lsp" },
     config = function()
       require("ajay.lsp")
