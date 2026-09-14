@@ -62,13 +62,27 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- COLORSCHEME  (must be eager + high priority)
   -- ══════════════════════════════════════════════════════════════════
+  -- Three themes are installed; colorscheme.lua decides which is active and
+  -- remembers your choice across restarts.
+  --
+  -- The other two are DEPENDENCIES rather than sibling specs, and that is
+  -- load order, not tidiness: lazy.nvim runs a plugin's dependencies before
+  -- the plugin itself, so both are on the runtimepath by the time this
+  -- `config` calls into colorscheme.lua. As sibling specs they would have
+  -- needed a higher `priority` than this one -- catppuccin is 1000 -- and
+  -- `require("vscode")` would otherwise fail on the very first startup
+  -- after a switch.
   {
     "catppuccin/nvim",
     name = "catppuccin",
     lazy = false,
     priority = 1000,
+    dependencies = {
+      { "Mofiqul/vscode.nvim", lazy = false },
+      { "xiantang/darcula-dark.nvim", lazy = false },
+    },
     config = function()
-      require("ajay.colorscheme")
+      setup_module("ajay.colorscheme")
       -- Registers :ToggleTransparency and <leader>tt. Registration only --
       -- it does not change your appearance until you press the key.
       setup_module("ajay.transparency")
@@ -491,8 +505,13 @@ require("lazy").setup({
         -- :LualineNotices for details". Same class of bug as the
         -- `colorscheme("catppuccin-nvim")` one fixed in colorscheme.lua.
         --
-        -- Must match vim.cmd.colorscheme() at the bottom of colorscheme.lua.
-        theme = "catppuccin-frappe",
+        -- Follows whichever theme is active. colorscheme.lua re-calls
+        -- lualine.setup() when you switch, so this is only the value used
+        -- on the very first draw.
+        theme = (function()
+          local ok, cs = pcall(require, "ajay.colorscheme")
+          return ok and cs.lualine_theme() or "auto"
+        end)(),
         globalstatus = true,
       },
     },
@@ -536,6 +555,131 @@ require("lazy").setup({
       { "<leader>u", vim.cmd.UndotreeToggle, desc = "Toggle Undo Tree" },
     },
   },
+  -- ── SESSIONS ──────────────────────────────────────────────────────
+  -- Restores the buffers, windows and cwd you had open.
+  --
+  -- NOTE ON HARPOON: harpoon2 already persists on its own, to
+  -- stdpath("data")/harpoon/<hash>.json, and does NOT need a session
+  -- plugin. If your marks ever look "lost", it is almost certainly the
+  -- cwd: harpoon.lua keys each list by `vim.uv.cwd()`, so `nvim` started
+  -- from $HOME sees a different list than `nvim` started from the project
+  -- root. Sessions help here too, because restoring one restores the cwd.
+  --
+  -- Deliberately NOT auto-restored on startup: that would fight the
+  -- dashboard (alpha) for the first screen. Restore explicitly with
+  -- <leader>Ss, or the "Restore Session" button on the dashboard.
+  {
+    "folke/persistence.nvim",
+    event = "BufReadPre",
+    opts = {
+      -- ── DO NOT SAVE WINDOWS THAT CANNOT BE RESTORED ──────────────
+      --
+      -- `:mksession` records every window, including plugin panes whose
+      -- buffers are generated at runtime and have no file behind them.
+      -- Restoring one does NOT bring the plugin back -- Vim just recreates
+      -- a buffer with the same NAME, so a saved neo-tree came back as
+      --
+      --   [ft=  bt=  name=neo-tree filesystem [1]]
+      --
+      -- an empty, *normal* buffer wearing neo-tree's name. That is the
+      -- "file tree does not load" symptom, and it is mildly dangerous too:
+      -- because `buftype` is empty, a stray `:w` in that pane would try to
+      -- write a real file literally called "neo-tree filesystem [1]".
+      --
+      -- So close them before the session is written. They are all cheap to
+      -- reopen (<C-n> for the tree) and none of them holds state worth
+      -- persisting.
+      pre_save = function()
+        local skip_ft = {
+          ["neo-tree"] = true,
+          ["neo-tree-popup"] = true,
+          ["alpha"] = true,
+          ["undotree"] = true,
+          ["diff"] = true, -- undotree's diff pane
+          ["dap-repl"] = true,
+          ["dapui_scopes"] = true,
+          ["dapui_breakpoints"] = true,
+          ["dapui_stacks"] = true,
+          ["dapui_watches"] = true,
+          ["dapui_console"] = true,
+          ["Glance"] = true,
+          ["glancelist"] = true,
+          ["lazygit"] = true,
+          ["qf"] = true,
+          ["help"] = true,
+        }
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          local ok, buf = pcall(vim.api.nvim_win_get_buf, win)
+          if ok then
+            -- Terminals go too. A Spring Boot task (springboot.lua) is a
+            -- live job; restoring it would resurrect a dead shell, not the
+            -- application, and its scrollback is gone either way.
+            if skip_ft[vim.bo[buf].filetype] or vim.bo[buf].buftype == "terminal" then
+              pcall(vim.api.nvim_win_close, win, true)
+            end
+          end
+        end
+      end,
+    },
+    -- <leader>S, not the <leader>q* the plugin's own README suggests:
+    -- <leader>q is ":q<CR>" in keymaps.lua, and a complete mapping that is
+    -- also a prefix stalls for 'timeoutlen' before firing. Quitting is far
+    -- too common to make it wait. See docs/keymap-reference.md.
+    keys = {
+      {
+        "<leader>Ss",
+        function()
+          require("persistence").load()
+        end,
+        desc = "Session: restore for this directory",
+      },
+      {
+        "<leader>Sl",
+        function()
+          require("persistence").load({ last = true })
+        end,
+        desc = "Session: restore last used",
+      },
+      {
+        "<leader>Sd",
+        function()
+          require("persistence").stop()
+        end,
+        desc = "Session: stop saving this one",
+      },
+    },
+  },
+
+  -- ── IntelliJ-STYLE PEEK / FIND USAGES ─────────────────────────────
+  -- `vim.lsp.buf.references()` dumps into the quickfix list: a flat list
+  -- of file:line with no preview and no way to see the surrounding code
+  -- without leaving where you are. That is the gap against IntelliJ's
+  -- Find Usages (Alt+F7) and Quick Definition (Ctrl+Shift+I).
+  --
+  -- glance gives a results list beside a live preview pane -- move down
+  -- the list and the preview follows, press <CR> to jump, <Esc> to leave
+  -- without moving at all.
+  {
+    "dnlhc/glance.nvim",
+    cmd = "Glance",
+    opts = {
+      border = { enable = true, top_char = "─", bottom_char = "─" },
+      list = { position = "right", width = 0.33 },
+      -- Jump straight there when there is exactly one result and it is
+      -- not the symbol under the cursor. Opening a whole preview UI to
+      -- show a single destination is friction, not a feature.
+      hooks = {
+        before_open = function(results, open, jump, method)
+          if #results == 1 and method ~= "references" then
+            jump(results[1])
+          else
+            open(results)
+          end
+        end,
+      },
+    },
+  },
+
   -- ── LOG FILES ─────────────────────────────────────────────────────
   -- Syntax highlighting for plain log output: levels (ERROR/WARN/INFO),
   -- timestamps, quoted strings, URLs, IPs and Java stack traces.
@@ -667,7 +811,7 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- LAZY.NVIM OPTIONS
   -- ══════════════════════════════════════════════════════════════════
-  install = { colorscheme = { "catppuccin" } },
+  install = { colorscheme = { "vscode", "catppuccin", "habamax" } },
   checker = { enabled = false },
   change_detection = { notify = false },
   rocks = {

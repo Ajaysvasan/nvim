@@ -150,6 +150,24 @@ vim.schedule(function()
   opt.clipboard = "unnamedplus"
 end)
 
+-- ── What a session is allowed to contain ──────────────────────────
+--
+-- Neovim's default is
+--   blank,buffers,curdir,folds,help,tabpages,winsize,terminal
+-- and two of those actively break session restore for this config:
+--
+--   blank     saves EMPTY windows, which come back as stray splits
+--   terminal  tries to restore terminal buffers -- a Spring Boot task
+--             (springboot.lua) would be resurrected as a dead shell, not
+--             a running application, with its scrollback gone regardless
+--
+-- `help` is dropped too: a restored help window is rarely what you meant
+-- to reopen, and persistence.nvim's pre_save closes it anyway.
+--
+-- What is left is the part worth keeping: which files were open, where you
+-- were, and the window geometry.
+vim.opt.sessionoptions = "buffers,curdir,folds,tabpages,winsize"
+
 -- ── Session view: remember folds and cursor position ──────────────
 -- FIX: the old autocmds fired mkview/loadview for every non-empty
 -- filetype, which includes plugin scratch buffers. On a fresh machine with

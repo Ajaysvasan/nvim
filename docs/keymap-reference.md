@@ -28,6 +28,7 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 | `<leader>s` | **Spring Boot** |
 | `<leader>t` | **Toggles** |
 | `<leader>u` | Undo tree |
+| `<leader>S` | **Sessions** (persistence.nvim) |
 | `<leader>w` | Write (no sub-keys — kept instant) |
 | `<leader>x` | Save+quit (no sub-keys — kept instant) |
 
@@ -54,9 +55,10 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 |---|---|---|
 | `gd` | n | Go to definition |
 | `gD` | n | Go to declaration |
-| `gr` | n | Go to references |
-| `gi` | n | Go to implementation |
+| `gr` | n | **Find usages** — list + live preview (glance) |
+| `gi` | n | Go to implementation — list + preview (glance) |
 | `gt` | n | Go to type definition |
+| `<leader>lp` | n | **Peek definition** without leaving the buffer (glance) |
 | `K` | n | Hover documentation |
 | `gK` | n | Signature help *(insert-mode `<C-s>` is a Neovim default for the same thing)* |
 | `[d` `]d` | n | Previous / next diagnostic |
@@ -283,6 +285,8 @@ Source: [springboot.md](springboot.md)
 | `tb` | Git blame line | [gitsigns](gitsigns.md) |
 | `td` | Show deleted lines | gitsigns |
 | `tt` | Transparency | [transparency](transparency.md) |
+| `tc` | **Choose colorscheme** (remembered across restarts) | [colorscheme](colorscheme.md) |
+| `tn` | Cycle to the next colorscheme | colorscheme |
 
 ## `<leader>l` — language server / format
 
@@ -302,6 +306,31 @@ Source: [springboot.md](springboot.md)
 >
 > `<leader>l` is not itself a mapping, so nothing in this group is ambiguous.
 > `<leader>w` and `<leader>x` are now childless and fire instantly.
+
+## `<leader>S` — sessions
+
+| Key | Action |
+|---|---|
+| `Ss` | Restore the session for this directory |
+| `Sl` | Restore the last session used anywhere |
+| `Sd` | Stop saving the current session |
+
+Sessions **save automatically** on exit; only restoring is manual. Restoring also
+restores the **cwd**, which is what makes your [harpoon](harpoon.md) marks be
+there — harpoon keys its list by `cwd`.
+
+**What a session does *not* restore:** the file tree, dashboard, undotree,
+dap-ui panels, quickfix, help and terminal windows are all closed before the
+session is written. `:mksession` records a window by its buffer NAME, and a
+plugin pane has no file behind it — so a saved neo-tree came back as an empty
+*normal* buffer literally named `neo-tree filesystem [1]` rather than a working
+tree. Reopen the tree with `<C-n>` after restoring; it costs nothing.
+
+> Capital `S`, not the `<leader>q*` persistence.nvim's own README suggests:
+> `<leader>q` is `:q<CR>` here, and a complete mapping that is also a prefix
+> stalls for `timeoutlen` before firing. Quitting is far too common for that.
+
+Source: [plugins.md](plugins.md)
 
 ## `<leader>m` — notebooks *(only with `enable_notebook`)*
 

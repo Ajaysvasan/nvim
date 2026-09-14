@@ -171,12 +171,21 @@ function M.setup()
         theme = "dropdown",
         previewer = false,
       },
+      -- WAS `theme = "cursor"`, which renders a tiny popup anchored at the
+      -- cursor -- a few lines tall and about as wide as the longest path.
+      -- For "where is this used?" that is the worst possible shape: no
+      -- room for the preview, so it answered *where* without ever showing
+      -- *what*. These now use the default horizontal layout, which
+      -- inherits the wide preview configured in `defaults` above.
+      --
+      -- `gr` goes to glance (see lsp.lua) for the side-by-side view;
+      -- these Telescope pickers are the fuzzy-filterable alternative when
+      -- a symbol has 200 usages and you want to narrow by path.
       lsp_references = {
-        theme = "cursor",
         initial_mode = "normal",
+        include_declaration = false,
       },
       lsp_definitions = {
-        theme = "cursor",
         initial_mode = "normal",
       },
       lsp_document_symbols = {

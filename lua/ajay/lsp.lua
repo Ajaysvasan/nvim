@@ -287,9 +287,41 @@ vim.api.nvim_create_autocmd("LspAttach", {
     -- Navigation
     map("n", "gd", vim.lsp.buf.definition, "Go to definition")
     map("n", "gD", vim.lsp.buf.declaration, "Go to declaration")
-    map("n", "gr", vim.lsp.buf.references, "Go to references")
-    map("n", "gi", vim.lsp.buf.implementation, "Go to implementation")
+
+    -- ── FIND USAGES, IntelliJ-style ──────────────────────────────
+    --
+    -- `vim.lsp.buf.references()` sends results to the QUICKFIX LIST: a
+    -- flat file:line list with no preview, so answering "is this the
+    -- usage I want?" means jumping to each one and jumping back. That is
+    -- the gap against IntelliJ's Find Usages (Alt+F7), which shows the
+    -- list and the code side by side.
+    --
+    -- glance renders a results list next to a live preview -- move down
+    -- the list and the preview follows, <CR> jumps, <Esc> leaves without
+    -- moving the cursor at all.
+    --
+    -- gd stays a DIRECT jump on purpose. It is the hot path (IntelliJ's
+    -- Ctrl+B) and opening a preview UI to show one destination is
+    -- friction; <leader>lp is there when you want to peek instead.
+    --
+    -- Falls back to the built-in handler if glance is unavailable, so a
+    -- failed plugin install degrades to the old behaviour rather than
+    -- leaving `gr` dead.
+    local function glance(method, fallback)
+      return function()
+        if not pcall(vim.cmd, "Glance " .. method) then
+          fallback()
+        end
+      end
+    end
+
+    map("n", "gr", glance("references", vim.lsp.buf.references), "Find usages (list + preview)")
+    map("n", "gi", glance("implementations", vim.lsp.buf.implementation), "Go to implementation (preview)")
     map("n", "gt", vim.lsp.buf.type_definition, "Go to type definition")
+    -- Peek the definition without leaving this buffer -- IntelliJ's
+    -- Ctrl+Shift+I. Lives under <leader>l with the rest of the LSP group;
+    -- `gp` would have been the obvious key and is a built-in paste motion.
+    map("n", "<leader>lp", glance("definitions", vim.lsp.buf.definition), "Peek definition")
 
     -- Docs
     map("n", "K", vim.lsp.buf.hover, "Hover documentation")

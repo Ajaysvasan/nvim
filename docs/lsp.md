@@ -253,7 +253,7 @@ server actually attached.
 |---|---|
 | `gd` | Go to definition |
 | `gD` | Go to declaration |
-| `gr` | Go to references |
+| `gr` | **Find usages** — opens [glance](#find-usages-glance), a list beside a live preview |
 | `gi` | Go to implementation |
 | `gt` | Go to type definition |
 
@@ -276,6 +276,34 @@ server actually attached.
 |---|---|---|
 | `<leader>rn` | n | Rename symbol |
 | `<leader>ca` | n, v | Code action |
+
+### Find usages (glance)
+
+`vim.lsp.buf.references()` sends results to the **quickfix list**: a flat
+`file:line` list with no preview, so answering "is this the usage I want?" means
+jumping to each one and jumping back. That is the gap against IntelliJ's Find
+Usages (Alt+F7), which shows the list and the code side by side.
+
+`gr` and `gi` now open [glance.nvim](https://github.com/dnlhc/glance.nvim): a
+results list next to a live preview. Move down the list, the preview follows;
+`<CR>` jumps, `<Esc>` leaves without moving the cursor at all. `<leader>lp`
+peeks the *definition* the same way — IntelliJ's Ctrl+Shift+I.
+
+`gd` deliberately stays a **direct jump**. It is the hot path (IntelliJ's
+Ctrl+B) and opening a preview UI to show a single destination is friction.
+A `before_open` hook applies the same rule inside glance: one result and it
+jumps straight there instead of drawing a window.
+
+Both fall back to the built-in quickfix handler if glance fails to load, so a
+broken plugin install degrades rather than leaving `gr` dead.
+
+> ⚠️ **Java only:** [jdtls.md](jdtls.md) sets
+> `references.includeDecompiledSources = true`, so `gr` on a widely-used symbol
+> also returns matches inside dependency JARs. Those arrive as `jdt://` URIs and
+> render in the list as percent-encoded text like
+> `%3Corg.apache.kafka.streams%28KafkaClientSupplier.cla`. On kafka's `Producer`
+> interface that is 496 of 905 results. Set it to `false` in `jdtls.lua` if you
+> want project-scope-only usages, which is what IntelliJ's Alt+F7 defaults to.
 
 ### Diagnostics
 

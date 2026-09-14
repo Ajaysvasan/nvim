@@ -78,6 +78,8 @@ except where noted.
 | Command | Module | Action |
 |---|---|---|
 | `:ToggleTransparency` | [transparency](transparency.md) | Toggle transparent background (`<leader>tt`) |
+| `:Theme [name]` | colorscheme | Pick a colorscheme, or apply one by name (tab-completes). Remembered across restarts |
+| `:ThemeNext` | colorscheme | Cycle to the next colorscheme |
 
 ## Plugin-provided commands you'll use often
 

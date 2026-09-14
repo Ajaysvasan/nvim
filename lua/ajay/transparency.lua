@@ -13,10 +13,12 @@
 --     is not a Catppuccin Frappe colour. Toggling off left you with a
 --     background that did not match the theme.
 --
--- Catppuccin already implements this properly via `transparent_background`.
--- So this module just flips a global and re-applies the colorscheme, and
--- the theme handles every group it knows about -- including ones added
--- later.
+-- Themes that implement transparency natively (VS Code Dark+, Catppuccin)
+-- are simply told about it and handle every group they own, including ones
+-- added later. For a theme with no such option (Darcula), colorscheme.lua
+-- falls back to a COMPUTED sweep -- clearing the background of every group
+-- whose background currently matches Normal's -- rather than the
+-- hand-written group list described above.
 --
 -- It does NOT change your appearance at load time. Transparency starts
 -- off; nothing happens until you press <leader>tt.
@@ -24,16 +26,23 @@
 local M = {}
 
 local function apply()
-  -- Re-run colorscheme.lua from scratch so catppuccin.setup() sees the new
-  -- flag. Clearing the package cache is what makes the re-require actually
-  -- execute rather than return the cached module.
-  package.loaded["ajay.colorscheme"] = nil
-  local ok, err = pcall(require, "ajay.colorscheme")
+  -- Ask the theme registry to rebuild the ACTIVE theme with the new flag.
+  --
+  -- This used to wipe package.loaded["ajay.colorscheme"] and re-require it,
+  -- which worked only because that module was a side-effect script that ran
+  -- catppuccin.setup() at require time. It is a registry now
+  -- (docs/colorscheme.md), so re-requiring would just hand back the cached
+  -- table and change nothing on screen.
+  --
+  -- Rebuilding rather than patching highlights is still the right move:
+  -- most themes bake the transparency choice in at setup() time, so the
+  -- flag has to be read while the theme is being constructed.
+  local ok, cs = pcall(require, "ajay.colorscheme")
   if not ok then
-    vim.notify("Failed to re-apply colorscheme:\n" .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("Failed to load the theme registry:\n" .. tostring(cs), vim.log.levels.ERROR)
     return false
   end
-  return true
+  return cs.reapply()
 end
 
 function M.toggle()

@@ -123,6 +123,30 @@ function M.setup()
     filesystem = {
       follow_current_file = { enabled = true },
       use_libuv_file_watcher = true,
+
+      -- ── COMPACT MIDDLE PACKAGES ──────────────────────────────────
+      --
+      -- This is IntelliJ's "Compact Middle Packages", and it matters far
+      -- more than window width for Java. When a directory holds exactly
+      -- one child and that child is a directory, neo-tree merges them into
+      -- a single row:
+      --
+      --   project            project/two/wallet
+      --     two         ->     Config
+      --       wallet           Controller
+      --         Config
+      --         Controller
+      --
+      -- A Java package path is a chain of exactly that shape, so this
+      -- reclaims one indent level per package segment -- the thing that
+      -- was actually eating the tree, since widening only buys columns
+      -- linearly while nesting costs them on every level.
+      --
+      -- Trade-off: you can no longer expand or collapse the intermediate
+      -- directories separately, because they are no longer separate rows.
+      -- That is the same deal IntelliJ makes, and for a package chain
+      -- there is nothing in those middle directories to look at anyway.
+      group_empty_dirs = true,
       filtered_items = {
         visible = false,
         hide_dotfiles = false,
@@ -132,7 +156,41 @@ function M.setup()
 
     window = {
       position = "left",
-      width = 30,
+
+      -- ── WIDTH ────────────────────────────────────────────────────
+      --
+      -- Was a flat 30, which is fine for a flat repo and far too narrow
+      -- for Java. Every level of nesting costs `indent_size` (2) plus the
+      -- marker column, and Java buries source deep:
+      --
+      --   wallet/src/main/java/project/two/wallet/DTO/Wallets/X.java
+      --
+      -- is nine levels below the project root, so ~20 of those 30 columns
+      -- were gone before the filename started. Real names got cut to
+      -- "Transacti" and "Controll".
+      --
+      -- neo-tree's `resolve_width` accepts a number, a "25%" string, or a
+      -- FUNCTION -- so scale with the terminal and clamp both ends:
+      --
+      --   100 cols -> 34    170 cols -> 42    250 cols -> 55 (capped)
+      --
+      -- The floor keeps deep Java paths readable on a laptop screen; the
+      -- ceiling stops the tree eating half of an ultrawide.
+      width = function()
+        return math.max(34, math.min(55, math.floor(vim.o.columns * 0.25)))
+      end,
+
+      -- Deliberately left OFF (it is the default).
+      --
+      -- `auto_expand_width` resizes the window to `longest_node` whenever a
+      -- name overflows -- and reading the renderer, it only ever GROWS
+      -- (`desired_width > last_user_width`) and has no upper bound. In a
+      -- monorepo like kafka, with 6 500 Java files nested ten deep, one
+      -- long path would throw the tree across most of the screen and it
+      -- would never come back. The clamped width above is the predictable
+      -- version of the same idea.
+      auto_expand_width = false,
+
       mapping_options = { noremap = true, nowait = true },
     },
   })

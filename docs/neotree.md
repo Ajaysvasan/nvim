@@ -15,8 +15,74 @@
 | `filesystem.use_libuv_file_watcher` | `true` | Files created outside Neovim appear without a manual refresh — cheaper than polling |
 | `filtered_items.hide_dotfiles` | `false` | Dotfiles visible: this *is* a dotfiles repo |
 | `filtered_items.hide_gitignored` | `false` | `target/`, `node_modules/` etc. stay visible — Telescope filters them out for searching, the tree still shows them |
-| `window.position` / `width` | `left`, `30` | |
+| `window.position` | `left` | |
+| `window.width` | **function**, clamped `34`–`55` | See [Width](#width-and-java-depth) — a flat `30` was unusable for Java |
+| `window.auto_expand_width` | `false` | Deliberately off — it only ever *grows*, with no upper bound |
+| `filesystem.group_empty_dirs` | `true` | IntelliJ's "Compact Middle Packages" — see below |
 | `mapping_options` | `noremap`, `nowait` | `nowait` stops single-key tree mappings waiting on `timeoutlen` |
+
+## Width, and Java depth
+
+The tree was a flat **30 columns**, which is fine for a shallow repo and
+unusable for Java. Every level of nesting costs `indent_size` (2) plus a marker
+column, and Java buries source deep:
+
+```
+wallet/src/main/java/project/two/wallet/DTO/Wallets/WalletBalanceRequest.java
+```
+
+That is nine levels below the project root, so ~20 of the 30 columns were gone
+before the filename even started. Real names rendered as `Transacti` and
+`Controll`.
+
+**Two changes, and the second matters more than the first.**
+
+### 1. A clamped, proportional width
+
+`resolve_width` accepts a number, a `"25%"` string, or a **function**, so the
+width scales with the terminal and is clamped at both ends:
+
+| Terminal | Tree | Code gets |
+|---|---|---|
+| 100 cols | 34 | 66 |
+| 170 cols | 42 | 128 |
+| 250 cols | 55 | 195 |
+
+The floor keeps deep Java paths readable on a laptop; the ceiling stops the tree
+eating half an ultrawide.
+
+> `auto_expand_width` looks like the obvious answer and is a trap. Reading the
+> renderer, it resizes to `longest_node` whenever a name overflows, it only ever
+> **grows** (`desired_width > last_user_width`), and it has **no upper bound**.
+> In kafka — 6 500 Java files nested ten deep — a single long path would throw
+> the tree across most of the screen and never give it back.
+
+### 2. Compact middle packages
+
+`group_empty_dirs = true` is IntelliJ's *Compact Middle Packages*. When a
+directory holds exactly one child and that child is a directory, the two merge
+into a single row:
+
+```
+project                     project/two/wallet
+  two              ->         Config
+    wallet                    Controller
+      Config
+      Controller
+```
+
+A Java package path is a chain of exactly that shape, so this reclaims **one
+indent level per package segment**. That is the thing that was actually eating
+the tree — widening buys columns linearly, while nesting spends them on every
+level.
+
+Measured on `learning/backend`, the file that previously truncated to
+`WalletBalanceReques` now fits in full; on kafka, `java/org/apache/kafka`
+collapses from four rows to one.
+
+**Trade-off:** the intermediate directories are no longer separate rows, so you
+cannot expand or collapse them individually. That is the same deal IntelliJ
+makes, and there is nothing inside a package chain to look at anyway.
 
 ## Icons
 

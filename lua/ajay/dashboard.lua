@@ -128,11 +128,16 @@ function M.setup()
     return { type = "padding", val = 1 }
   end
 
-  -- NOTE: there used to be a "Sessions" button here calling
-  -- require('persistence').load(). persistence.nvim is not in the plugin
-  -- list, so pressing it raised "module 'persistence' not found". Removed
-  -- rather than left as a trap; if you want session restore, add
-  -- folke/persistence.nvim to plugins.lua and put the button back.
+  -- The "Restore Session" button below is back. It was removed earlier
+  -- because it called require('persistence').load() while persistence.nvim
+  -- was not in the plugin list -- pressing it raised "module 'persistence'
+  -- not found". The plugin is now installed (see plugins.lua), so the
+  -- button works.
+  --
+  -- Restoring is deliberately a BUTTON rather than something that happens
+  -- automatically at startup: auto-restore would race this dashboard for
+  -- the first screen, and "open my editor fresh" is a legitimate thing to
+  -- want. Sessions are still SAVED automatically on exit either way.
   local find_specs = {
     { "SPC f f", "󰍉  Find File", "<cmd>Telescope find_files<CR>" },
     { "SPC f r", "  Recent Files", "<cmd>Telescope oldfiles<CR>" },
@@ -155,6 +160,11 @@ function M.setup()
 
   local manage_specs = {
     { "n      ", "  New File", "<cmd>ene <BAR> startinsert<CR>" },
+    -- Restores the buffers, windows and cwd from your last session in this
+    -- directory. Restoring the cwd matters for more than tidiness: harpoon
+    -- keys its mark list by cwd, so landing back in the right directory is
+    -- what makes your marks be there.
+    { "s      ", "  Restore Session", "<cmd>lua require('persistence').load()<CR>" },
     { "c      ", "  Neovim Config", "<cmd>e ~/.config/nvim/init.lua<CR>" },
     { "l      ", "󰒲  Lazy", "<cmd>Lazy<CR>" },
     { "m      ", "  Mason", "<cmd>Mason<CR>" },

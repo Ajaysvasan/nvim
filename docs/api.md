@@ -43,7 +43,7 @@ truncated before its `return M`), and module has no `setup`.
 Run their work at `require` time and return nothing. Used where there is no
 meaningful "later":
 
-`cmp` · `colorscheme` · `dap` · `keymaps` · `lsp` · `options` · `plugins` · `treesitter`
+`cmp` · `dap` · `keymaps` · `lsp` · `options` · `plugins` · `treesitter`
 
 ```lua
 config = function()
@@ -223,6 +223,9 @@ is only for mappings needing **no plugin**.
 | `ajay.java-creator` | `open()` | The new-Java-file GUI |
 | `ajay.springboot` | `run_app()` `build_project()` `run_tests()` `create_project()` | |
 | `ajay.transparency` | `toggle()` | |
+| `ajay.colorscheme` | `apply(name)` `cycle()` `pick()` | Switch theme; the choice persists |
+| | `current()` `lualine_theme()` | Active theme, and its matching lualine theme |
+| | `themes` | The registry — add a table here to add a theme ([colorscheme.md](colorscheme.md)) |
 | `ajay.bigfile` | `max_bytes` `max_line_length` | Thresholds — assign to change them |
 
 ### Prefer `compat.has` over version numbers
