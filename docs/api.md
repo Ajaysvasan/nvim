@@ -227,6 +227,8 @@ is only for mappings needing **no plugin**.
 | | `current()` `lualine_theme()` | Active theme, and its matching lualine theme |
 | | `themes` | The registry — add a table here to add a theme ([colorscheme.md](colorscheme.md)) |
 | `ajay.bigfile` | `max_bytes` `max_line_length` | Thresholds — assign to change them |
+| `ajay.conform` | `detect_buf(bufnr)` | What this project's formatter setup resolves to ([conform.md](conform.md)) |
+| `ajay.tscontext` | `setup()` `winbar()` | Winbar breadcrumb + the opt-in sticky overlay ([treesitter.md](treesitter.md#where-am-i-tscontextlua)) |
 
 ### Prefer `compat.has` over version numbers
 
@@ -279,6 +281,10 @@ Break these and something fails *silently*, which is the whole reason they are
 written down.
 
 1. **Honour `vim.b.bigfile`** in anything doing per-buffer or per-keystroke work.
+   Two live examples: `tscontext.lua` returns `false` from `on_attach` (it runs a
+   treesitter query on every cursor move), and `lsp.lua`'s `LspAttach` returns
+   early (it was creating keymaps for a client `bigfile.lua` then detached —
+   see [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)).
 2. **Every mapped lhs goes in the spec's `keys`; every command in `cmd`.**
 3. **No complete mapping may be the prefix of another** (400 ms `timeoutlen` stall).
 4. **Node-based servers need a `fallback_bin` entry**, or they are never enabled.

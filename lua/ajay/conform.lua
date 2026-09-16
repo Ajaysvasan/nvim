@@ -43,6 +43,193 @@ local function write_state(enabled)
   end
 end
 
+-- ══════════════════════════════════════════════════════════════════
+-- PROJECT-AWARE FORMATTER DETECTION
+-- ══════════════════════════════════════════════════════════════════
+--
+-- THE BUG THIS FIXES, demonstrated:
+--
+--   a project's .prettierrc:  { "singleQuote": true, "semi": false }
+--   prettier on its own    ->  const greeting = 'hello'
+--   this config, before    ->  const greeting = "hello";
+--
+-- `prepend_args` are passed on the COMMAND LINE, and CLI flags beat a
+-- config file for every formatter here. So the personal style defaults
+-- below -- --single-quote false, --tab-width 2, --indent-type Spaces --
+-- silently overrode whatever the project asked for. On a shared repo that
+-- means every save rewrites files to one developer's taste, producing
+-- diff noise and failing the project's own lint job.
+--
+-- Two things are detected, and they are different questions:
+--
+--   1. WHICH TOOL does this project use?  (ruff vs black, biome vs
+--      prettier) -- answered by which config files exist.
+--   2. Does the project STATE ITS OWN STYLE?  If yes, pass no style
+--      flags at all and let the tool read the project's config.
+--
+-- Deliberately NOT detected: spotless and checkstyle (kafka uses both).
+-- They are Gradle/Maven plugins, not CLIs -- `./gradlew spotlessApply`
+-- takes seconds and would make every save unusable. google-java-format
+-- is the closest fast equivalent and stays the Java formatter.
+
+--- Nearest file matching any of `names`, searching upward from `dir`.
+--- @param dir string
+--- @param names string[]
+--- @return string|nil
+local function find_up(dir, names)
+  return vim.fs.find(names, { upward = true, path = dir, type = "file" })[1]
+end
+
+-- Contents of config files already read, keyed by path. pyproject.toml is
+-- inspected twice (once for ruff, once for black) and pytorch's is large,
+-- so without this a cold detection read the same file twice -- and every
+-- sibling directory in the project read it again. Cleared alongside
+-- detect_cache.
+local read_cache = {}
+
+local function read_file(path)
+  local hit = read_cache[path]
+  if hit ~= nil then
+    return hit
+  end
+  local body = ""
+  local fh = io.open(path, "r")
+  if fh then
+    body = fh:read("*a") or ""
+    fh:close()
+  end
+  read_cache[path] = body
+  return body
+end
+
+--- Whether a file contains a pattern. Used to read intent out of a
+--- shared config file (pyproject.toml, package.json) rather than merely
+--- noting that the file exists -- pyproject.toml is present in nearly
+--- every Python project and says nothing on its own.
+local function file_matches(path, pattern)
+  if not path then
+    return false
+  end
+  return read_file(path):find(pattern) ~= nil
+end
+
+--- Does the nearest pyproject.toml declare a [tool.<section>] table?
+local function pyproject_declares(dir, section)
+  return file_matches(find_up(dir, { "pyproject.toml" }), "%[tool%." .. section .. "[%.%]]")
+end
+
+local function has_exe(name)
+  return vim.fn.executable(name) == 1
+end
+
+-- Detection touches the filesystem, and format_on_save runs on EVERY
+-- write, so results are cached per directory. Cleared by :FormatDetect!
+-- and on DirChanged -- adding a .prettierrc mid-session is rare enough
+-- to want an explicit bust rather than a stat on every save.
+local detect_cache = {}
+
+--- @param dir string
+--- @return table
+local function detect(dir)
+  local cached = detect_cache[dir]
+  if cached then
+    return cached
+  end
+
+  local d = {}
+
+  -- ── Does the project state its own style? ──
+  d.prettier_config = find_up(dir, {
+    ".prettierrc",
+    ".prettierrc.json",
+    ".prettierrc.yml",
+    ".prettierrc.yaml",
+    ".prettierrc.json5",
+    ".prettierrc.js",
+    ".prettierrc.cjs",
+    ".prettierrc.mjs",
+    ".prettierrc.toml",
+    "prettier.config.js",
+    "prettier.config.cjs",
+    "prettier.config.mjs",
+    "prettier.config.ts",
+  }) ~= nil
+  -- A "prettier" key in package.json is equally authoritative.
+  if not d.prettier_config then
+    d.prettier_config = file_matches(find_up(dir, { "package.json" }), '"prettier"%s*:')
+  end
+
+  d.stylua_config = find_up(dir, { "stylua.toml", ".stylua.toml" }) ~= nil
+  d.black_config = pyproject_declares(dir, "black")
+  d.clang_format_config = find_up(dir, { ".clang-format" }) ~= nil
+  d.editorconfig = find_up(dir, { ".editorconfig" }) ~= nil
+
+  -- ── Which tool? ──
+  --
+  -- Gated on the binary actually existing. Selecting a formatter that is
+  -- not installed would make conform report "formatter unavailable" and
+  -- silently fall through to the LSP -- worse than just using the
+  -- default. `*_wanted` records the project's preference regardless, so
+  -- :FormatDetect can tell you what to install.
+  d.ruff_wanted = find_up(dir, { "ruff.toml", ".ruff.toml" }) ~= nil or pyproject_declares(dir, "ruff")
+  d.python_tool = (d.ruff_wanted and has_exe("ruff")) and "ruff" or "black"
+
+  d.biome_wanted = find_up(dir, { "biome.json", "biome.jsonc" }) ~= nil
+  d.web_tool = (d.biome_wanted and has_exe("biome")) and "biome" or "prettier"
+
+  detect_cache[dir] = d
+  return d
+end
+
+--- Detection for a buffer, by its directory.
+--- @param bufnr? integer
+--- @return table
+local function detect_buf(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  local dir = name ~= "" and vim.fs.dirname(name) or ((vim.uv or vim.loop).cwd())
+  return detect(dir)
+end
+
+--- Style flags to use only when the project has NOT stated its own.
+--- @param key string field on the detection table
+--- @param args string[]
+--- @return fun(self: table, ctx: table): string[]
+local function style_unless_project_config(key, args)
+  return function(_, ctx)
+    if detect(ctx.dirname)[key] then
+      return {}
+    end
+    return args
+  end
+end
+
+M.detect_buf = detect_buf
+
+--- A formatter binary, preferring the project's virtualenv.
+--- @param name string
+--- @return string|fun(self: table, ctx: table): string
+local function venv_bin(name)
+  local ok, cutil = pcall(require, "conform.util")
+  if not ok then
+    return name
+  end
+  return cutil.find_executable({
+    ".venv/bin/" .. name,
+    "venv/bin/" .. name,
+    "env/bin/" .. name,
+  }, name)
+end
+
+--- Shared by every filetype biome is able to handle.
+local function web_formatters(bufnr)
+  if detect_buf(bufnr).web_tool == "biome" then
+    return { "biome" }
+  end
+  return { "prettier" }
+end
+
+
 function M.setup()
   -- Restore BEFORE conform.setup() below registers format_on_save.
   --
@@ -65,14 +252,29 @@ function M.setup()
       -- Lua
       lua = { "stylua" },
 
-      -- Python
-      python = { "isort", "black" },
+      -- Python -- ruff when the project asks for it, else isort+black.
+      -- pytorch is the live example: its pyproject.toml declares
+      -- [tool.ruff] and [tool.ruff.format], so running black there would
+      -- be the wrong tool entirely.
+      python = function(bufnr)
+        if detect_buf(bufnr).python_tool == "ruff" then
+          -- Same import-fixer-then-formatter shape as isort+black.
+          return { "ruff_organize_imports", "ruff_format" }
+        end
+        return { "isort", "black" }
+      end,
 
-      -- JavaScript/TypeScript (IMPORTANT!)
-      javascript = { "prettier" },
-      javascriptreact = { "prettier" },
-      typescript = { "prettier" },
-      typescriptreact = { "prettier" },
+      -- JavaScript/TypeScript -- biome when the project has biome.json,
+      -- else prettier.
+      --
+      -- Only these filetypes are routed through biome detection. biome
+      -- does not handle html, scss, yaml or markdown at all, so those
+      -- stay on prettier unconditionally below -- handing biome a file it
+      -- cannot parse would fail the format rather than fall back.
+      javascript = web_formatters,
+      javascriptreact = web_formatters,
+      typescript = web_formatters,
+      typescriptreact = web_formatters,
 
       -- Web
       html = { "prettier" },
@@ -85,8 +287,8 @@ function M.setup()
       htmlangular = { "prettier" },
       css = { "prettier" },
       scss = { "prettier" },
-      json = { "prettier" },
-      jsonc = { "prettier" },
+      json = web_formatters,
+      jsonc = web_formatters,
       yaml = { "prettier" },
       markdown = { "prettier" },
 
@@ -128,11 +330,23 @@ function M.setup()
 
     -- Customize formatters
     formatters = {
+      -- Every `prepend_args` below is now CONDITIONAL. These are personal
+      -- style defaults for a project that has not said what it wants; the
+      -- moment a project states its own style, we pass nothing and let the
+      -- tool read the project's config. See the detection block above for
+      -- why: CLI flags beat config files, so unconditional args silently
+      -- overrode .prettierrc / stylua.toml / [tool.black].
       stylua = {
-        prepend_args = { "--indent-type", "Spaces", "--indent-width", "2" },
+        prepend_args = style_unless_project_config(
+          "stylua_config",
+          { "--indent-type", "Spaces", "--indent-width", "2" }
+        ),
       },
       prettier = {
-        prepend_args = {
+        -- prettier already resolves node_modules/.bin/prettier itself
+        -- (conform.util.from_node_modules), so a project pinning
+        -- prettier@2 is formatted by prettier@2, not the global one.
+        prepend_args = style_unless_project_config("prettier_config", {
           "--tab-width",
           "2",
           "--use-tabs",
@@ -143,11 +357,23 @@ function M.setup()
           "es5",
           "--semi",
           "true",
-        },
+        }),
       },
+
+      -- Python tools resolve from the project's virtualenv first.
+      --
+      -- Unlike prettier, conform ships these with a bare `command =
+      -- "black"`, so a project pinning black 23 in .venv was formatted by
+      -- whatever Mason installed globally -- and black's output changes
+      -- between majors (string normalisation, the magic trailing comma).
+      -- Falls back to the global binary when there is no venv.
       black = {
-        prepend_args = { "--line-length", "88" },
+        command = venv_bin("black"),
+        prepend_args = style_unless_project_config("black_config", { "--line-length", "88" }),
       },
+      isort = { command = venv_bin("isort") },
+      ruff_format = { command = venv_bin("ruff") },
+      ruff_organize_imports = { command = venv_bin("ruff") },
 
       -- ── THE IMPORT-DELETION FIX ──────────────────────────────────
       --
@@ -173,6 +399,11 @@ function M.setup()
       -- Net effect: google-java-format now only touches whitespace and
       -- line breaks. Imports belong to jdtls — use <leader>jo to organize
       -- them deliberately.
+      --
+      -- These two stay UNCONDITIONAL, unlike the style args above. They
+      -- are not a style preference -- they stop google-java-format from
+      -- fighting jdtls over imports, which it would do in every project
+      -- regardless of what that project's config says.
       ["google-java-format"] = {
         prepend_args = {
           "--skip-removing-unused-imports",
@@ -258,15 +489,82 @@ function M.setup()
     local buffer = not vim.b.disable_autoformat
     local eff, why = effective_state()
 
+    local names = {}
+    for _, f in ipairs(require("conform").list_formatters(0)) do
+      names[#names + 1] = f.name .. (f.available and "" or " (UNAVAILABLE)")
+    end
+
     local status = string.format(
-      "Format on save:\n  Global : %s  (saved on disk: %s)\n  Buffer : %s  (this session only)\n\n  On save here: %s",
+      "Format on save:\n  Global : %s  (saved on disk: %s)\n  Buffer : %s  (this session only)\n\n  On save here: %s\n  Using       : %s",
       global and "ENABLED ✓" or "DISABLED ✗",
       read_state() and "enabled" or "disabled",
       buffer and "ENABLED ✓" or "DISABLED ✗",
-      eff and "WILL FORMAT" or ("WILL NOT FORMAT — " .. why)
+      eff and "WILL FORMAT" or ("WILL NOT FORMAT — " .. why),
+      #names > 0 and table.concat(names, ", ") or "(none - LSP fallback).  :FormatDetect for detail"
     )
     vim.notify(status, eff and vim.log.levels.INFO or vim.log.levels.WARN)
   end, { desc = "Show format on save status" })
+
+  -- Show what was detected for this buffer, and why.
+  --
+  -- Needed because the whole point of detection is that it is INVISIBLE
+  -- when it works -- without this there is no way to answer "why did that
+  -- save use black instead of ruff?" short of reading the source.
+  vim.api.nvim_create_user_command("FormatDetect", function(a)
+    if a.bang then
+      detect_cache, read_cache = {}, {}
+    end
+    local d = detect_buf(0)
+    local names = {}
+    for _, f in ipairs(require("conform").list_formatters(0)) do
+      names[#names + 1] = f.name .. (f.available and "" or " (UNAVAILABLE)")
+    end
+
+    local lines = {
+      "Formatters for this buffer:",
+      "  " .. (#names > 0 and table.concat(names, ", ") or "(none - falls back to the LSP)"),
+      "",
+      "Detected in this project:",
+      ("  python tool : %s%s"):format(d.python_tool, d.ruff_wanted and "   [project asks for ruff]" or ""),
+      ("  web tool    : %s%s"):format(d.web_tool, d.biome_wanted and "   [project asks for biome]" or ""),
+      "",
+      "Project states its own style (we pass no style flags):",
+      ("  prettier    : %s"):format(d.prettier_config and "yes" or "no"),
+      ("  stylua      : %s"):format(d.stylua_config and "yes" or "no"),
+      ("  black       : %s"):format(d.black_config and "yes" or "no"),
+      ("  clang-format: %s"):format(d.clang_format_config and "yes" or "no"),
+      ("  .editorconfig: %s"):format(d.editorconfig and "yes" or "no"),
+    }
+
+    -- The case worth shouting about: the project wants a tool that is not
+    -- installed, so we quietly used the fallback instead.
+    local level = vim.log.levels.INFO
+    if d.ruff_wanted and d.python_tool ~= "ruff" then
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = "! This project wants ruff, but ruff is not installed."
+      lines[#lines + 1] = "  Using isort+black instead.  Fix: :MasonInstall ruff"
+      level = vim.log.levels.WARN
+    end
+    if d.biome_wanted and d.web_tool ~= "biome" then
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = "! This project wants biome, but biome is not installed."
+      lines[#lines + 1] = "  Using prettier instead.  Fix: :MasonInstall biome"
+      level = vim.log.levels.WARN
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "(:FormatDetect! re-scans, after adding a config file)"
+
+    vim.notify(table.concat(lines, "\n"), level, { title = "conform" })
+  end, { bang = true, desc = "Show which formatters this project resolves to, and why" })
+
+  -- A new directory is a new project: re-detect rather than serve a
+  -- cached answer from the previous one.
+  vim.api.nvim_create_autocmd("DirChanged", {
+    group = vim.api.nvim_create_augroup("ajay_conform_detect", { clear = true }),
+    callback = function()
+      detect_cache, read_cache = {}, {}
+    end,
+  })
 
   -- Keymaps
   vim.keymap.set({ "n", "v" }, "<leader>lf", function()

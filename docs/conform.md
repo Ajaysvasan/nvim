@@ -31,6 +31,107 @@ between the two parsers on all of them.
 
 All of these are installed by `mason-tool-installer` — see [lsp.md](lsp.md).
 
+## Project-aware formatter detection
+
+The formatter table below is the **fallback**, not the whole story. What
+actually runs is resolved per project, answering two separate questions.
+
+### 1. Which tool does this project use?
+
+| Filetype | Project has | Runs |
+|---|---|---|
+| `python` | `[tool.ruff]` in `pyproject.toml`, or `ruff.toml` | `ruff_organize_imports` + `ruff_format` |
+| `python` | anything else | `isort` + `black` |
+| `js`/`ts`/`jsx`/`tsx`/`json` | `biome.json` | `biome` |
+| `js`/`ts`/`jsx`/`tsx`/`json` | anything else | `prettier` |
+
+pytorch is the live example: its `pyproject.toml` declares `[tool.ruff]` and
+`[tool.ruff.format]`, so running black there would be the wrong tool entirely.
+
+Only those filetypes route through biome detection — biome cannot parse `html`,
+`scss`, `yaml` or `markdown`, so those stay on prettier unconditionally.
+
+> **Detection never selects a tool that is not installed.** Doing so would make
+> conform report "formatter unavailable" and silently fall through to the LSP,
+> which is worse than using the default. If a project wants a tool you do not
+> have, the fallback runs and `:FormatDetect` tells you what to install.
+
+### 2. Does the project state its own style?
+
+**This half was a real bug.** `prepend_args` are passed on the **command line**,
+and CLI flags beat a config file for every formatter here. So the personal
+defaults in this file silently overrode whatever the project asked for:
+
+| | |
+|---|---|
+| project's `.prettierrc` | `{ "singleQuote": true, "semi": false }` |
+| prettier on its own | `const greeting = 'hello'` |
+| **this config, before** | `const greeting = "hello";` |
+
+On a shared repo that means every save rewrites files to one developer's taste —
+diff noise, and a failing lint job in the project's own CI.
+
+Style flags are now **conditional**. When the project has its own config, we
+pass nothing and let the tool read it:
+
+| Formatter | Suppressed when the project has |
+|---|---|
+| `prettier` | any `.prettierrc*` / `prettier.config.*`, or a `"prettier"` key in `package.json` |
+| `stylua` | `stylua.toml` / `.stylua.toml` |
+| `black` | `[tool.black]` in `pyproject.toml` |
+| `clang_format` | — never had args; `.clang-format` was always honoured |
+
+Verified: with a project `stylua.toml` asking for tabs, formatting produces
+tabs; with none, it produces this config's 2-space default. Same for prettier
+in both directions.
+
+> `google-java-format`'s two flags stay **unconditional**, unlike the rest.
+> `--skip-removing-unused-imports` and `--skip-sorting-imports` are not a style
+> preference — they stop it fighting jdtls over imports, which it would do in
+> any project regardless of that project's config. See
+> [the import-deletion fix](#the-java-import-deletion-fix).
+
+### Project-local binaries
+
+A pinned formatter version matters: black's output changes between majors
+(string normalisation, the magic trailing comma), as does prettier's.
+
+- **prettier** — conform already resolves `node_modules/.bin/prettier` itself,
+  so a project pinning prettier 2 is formatted by prettier 2.
+- **black / isort / ruff** — conform ships these with a bare `command`, so they
+  used whatever Mason installed globally. They now resolve from the project's
+  virtualenv first (`.venv/bin`, `venv/bin`, `env/bin`), falling back to the
+  global binary.
+
+### Seeing what was detected
+
+`:FormatDetect` reports which formatters this buffer resolves to and why —
+detection is invisible when it works, so without this there is no way to answer
+"why did that save use black instead of ruff?".
+
+```
+Formatters for this buffer:
+  isort, black
+
+Detected in this project:
+  python tool : black   [project asks for ruff]
+  web tool    : prettier
+
+Project states its own style (we pass no style flags):
+  prettier    : no
+  stylua      : no
+  ...
+
+! This project wants ruff, but ruff is not installed.
+  Using isort+black instead.  Fix: :MasonInstall ruff
+```
+
+`:FormatDetect!` re-scans after you add a config file. Results are cached per
+directory — `format_on_save` runs on every write, so detection must not stat the
+filesystem each time — and the cache is also cleared on `DirChanged`.
+
+`:FormatStatus` shows the resolved formatter list too.
+
 ## Format on save
 
 `format_on_save` is a **function**, not a table, so it can bail out:

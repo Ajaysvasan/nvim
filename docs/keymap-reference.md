@@ -287,6 +287,7 @@ Source: [springboot.md](springboot.md)
 | `tt` | Transparency | [transparency](transparency.md) |
 | `tc` | **Choose colorscheme** (remembered across restarts) | [colorscheme](colorscheme.md) |
 | `tn` | Cycle to the next colorscheme | colorscheme |
+| `tC` | Toggle the **sticky overlay** (off by default — the winbar breadcrumb is always on) | [treesitter](treesitter.md) |
 
 ## `<leader>l` — language server / format
 

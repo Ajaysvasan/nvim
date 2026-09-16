@@ -330,6 +330,25 @@ require("lazy").setup({
     "HiPhish/rainbow-delimiters.nvim",
     event = { "BufReadPost", "BufNewFile" },
   },
+  -- ── STICKY CONTEXT ────────────────────────────────────────────────
+  -- Pins the enclosing class/method signature to the top of the window,
+  -- like IntelliJ's sticky lines. Configured in ajay.treesitter.
+  {
+    "nvim-treesitter/nvim-treesitter-context",
+    event = { "BufReadPost", "BufNewFile" },
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      -- Breadcrumbs for the WINBAR. treesitter-context renders as a float
+      -- OVER the buffer, so it necessarily hides the top lines of code;
+      -- the winbar is its own row and hides nothing. See ajay.tscontext.
+      "SmiteshP/nvim-navic",
+    },
+    cmd = { "TSContextEnable", "TSContextDisable", "TSContextToggle" },
+    keys = { { "<leader>tC", desc = "Toggle sticky context" } },
+    config = function()
+      setup_module("ajay.tscontext")
+    end,
+  },
 
   -- ══════════════════════════════════════════════════════════════════
   -- FORMATTING  (conform only — null-ls and autoformat.lua are gone)
@@ -347,7 +366,7 @@ require("lazy").setup({
     -- FormatStatus was missing here too -- same E492 as the two toggles:
     -- `:FormatStatus` typed by name, before any save, was "Not an editor
     -- command". Every command conform.lua defines must be listed.
-    cmd = { "ConformInfo", "Format", "ToggleFormatOnSave", "ToggleFormatOnSaveBuffer", "FormatStatus" },
+    cmd = { "ConformInfo", "Format", "ToggleFormatOnSave", "ToggleFormatOnSaveBuffer", "FormatStatus", "FormatDetect" },
     keys = {
       { "<leader>lf", mode = { "n", "v" }, desc = "Format buffer" },
       -- The toggles conform.lua registers. `event = BufWritePre` only fires
@@ -516,11 +535,15 @@ require("lazy").setup({
       },
     },
   },
-  {
-    "windwp/nvim-autopairs",
-    event = "InsertEnter",
-    config = true,
-  },
+  -- nvim-autopairs was here and is deliberately GONE. Auto-inserting the
+  -- closing bracket or quote fights you as often as it helps: it guesses
+  -- wrong when you are editing inside existing code, and the "type the
+  -- closing character to skip over it" behaviour silently swallows
+  -- keystrokes. Typing both halves yourself is predictable.
+  --
+  -- Nothing replaced it, and nothing else in this config auto-pairs. The
+  -- `!` HTML/JSX snippets in cmp.lua are explicit expansions you ask for
+  -- by name, which is a different thing.
   {
     "lukas-reineke/indent-blankline.nvim",
     event = { "BufReadPost", "BufNewFile" },

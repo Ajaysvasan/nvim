@@ -238,3 +238,126 @@ here** — `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca` come from the shared
 | Server exits with code 13 | Wrong JVM version. Run `:AjayDoctor`, install JDK 21. |
 | `<leader>jt` does nothing | `java-test` bundle not installed — `:MasonInstall java-test` |
 | Imports keep disappearing on save | Should be fixed — check that `conform.lua` still has the `--skip-removing-unused-imports` args |
+
+
+## Memory and CPU
+
+Opening a Java file in a large Gradle project used to consume **gigabytes**.
+Measured on kafka, and the cause was not where it looked.
+
+### It was mostly the Gradle daemon, not jdtls
+
+jdtls imports a Gradle project through the Tooling API, which starts a
+**separate Gradle daemon JVM**. Measured on kafka with the original config:
+
+| Process | Peak | At rest | After Neovim exits |
+|---|---|---|---|
+| **Gradle daemon** | **2046 MB** | **1785 MB** at 0% CPU | **still running** |
+| jdtls itself | 1673 MB | 1431 MB for a full minute | exits |
+
+The daemon inherits its JVM args from the **project's** `gradle.properties`, and
+kafka's says:
+
+```properties
+org.gradle.jvmargs=-Xmx4g -Xss4m -XX:+UseParallelGC
+```
+
+So it had a 4 GB ceiling and no reason to give anything back — and it outlived
+the editor, because Gradle daemons idle for **three hours** by default.
+
+Two settings fix this, both scoped to **jdtls's import only** — the project's
+`gradle.properties` is untouched, so `./gradlew build` in a terminal still gets
+its full 4 GB. A real build should be allowed to be fast; a background
+model-import for an editor should not cost 2 GB.
+
+- **`java.import.gradle.jvmArguments`** — caps the daemon's heap and makes it
+  collect (`-Xmx1g`, `GCTimeRatio=4`).
+- **`java.import.gradle.arguments = "--no-daemon"`** — the Tooling API then uses
+  a *single-use* daemon, so the JVM stops idling for Gradle's default three
+  hours. Costs a slower re-import, which is fine: `updateBuildConfiguration` is
+  `"interactive"`, so re-imports happen when you ask, not on every keystroke.
+
+| | Before | After |
+|---|---|---|
+| Gradle JVM, at rest | 1785 MB | **34 MB** |
+| Still there after Neovim exits | 1785 MB | **33 MB** |
+
+Verified the import still succeeds: **0 OOM errors, 71 Gradle projects
+imported** on kafka from a wiped workspace.
+
+### The second half: lazy GC
+
+jdtls's own heap showed the same shape — 1431 MB sitting at **0% CPU** for a
+minute. The JVM's default `GCTimeRatio` is 99, meaning "spend at most 1% of
+time collecting": a throughput setting for a server, not for an editor sidecar.
+Given a 4 GB ceiling it simply never collected.
+
+```
+-Xms100m -Xmx2g
+-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90
+-Dsun.zip.disableMemoryMapping=true
+```
+
+`GCTimeRatio=4` permits up to 20% of time in GC. `disableMemoryMapping` matters
+because jdtls opens hundreds of jars and mmap'ing them inflates RSS for no gain.
+
+After: jdtls decays to **57 MB** instead of holding 1431.
+
+**Together, at idle: ~3.2 GB → ~90 MB.**
+
+### What is *not* fixed: the import peak
+
+jdtls still reaches ~1.4 GB **while importing and indexing**. That is real work —
+building the model for 71 Gradle projects — and it lasts a minute or two, not
+indefinitely.
+
+Lowering `-Xmx` further does not help, and that was measured rather than
+assumed. At `-Xmx1g` a cold kafka import sat pinned at **1.0–1.2 GB RSS for
+196 s and had still not finished**: the heap was permanently full, so the JVM
+spent its time collecting instead of working. At 2g the same import finished by
+~126 s and then fell to 47 MB. Squeezing the ceiling traded a slightly lower
+peak for a much longer, hotter import — so 2g stays.
+
+> **`-Xmx` went 4g → 2g, and the history matters.** It was raised to 4g earlier
+> because 2g hit an `OutOfMemoryError` on kafka. That OOM was *not* a sizing
+> problem — it was the duplicate-server bug (two jdtls processes writing one
+> workspace), which is fixed. The ceiling was treating a symptom.
+
+### Other settings changed
+
+| Setting | Now | Why |
+|---|---|---|
+| `-Dlog.level` | `WARNING` (was `ALL`) | Maximum verbosity wrote every debug message for the whole indexing run. `vim.g.jdtls_debug = true` restores it. |
+| `eclipse`/`maven.downloadSources` | `false` | Downloads and indexes source jars for **every** dependency, up front. `includeDecompiledSources` still gives you readable code on `gd` into a library. `vim.g.jdtls_download_sources = true` restores it. |
+| `referencesCodeLens` | `false` | A reference count on every method is a **project-wide search per method**, recomputed as you scroll. `implementationsCodeLens` stays — it is a type-hierarchy lookup and far cheaper. `vim.g.jdtls_references_codelens = true` restores it. |
+| `maxConcurrentBuilds` | `1` | The background compiler would otherwise saturate every core on a 20-module build. |
+
+### Escape hatches
+
+| Variable | Default | Effect |
+|---|---|---|
+| `vim.g.jdtls_max_heap` | `"2g"` | jdtls's own `-Xmx` |
+| `vim.g.jdtls_gradle_max_heap` | `"1g"` | The Gradle daemon's `-Xmx` |
+| `vim.g.jdtls_gradle_idle_ms` | `900000` | Daemon idle timeout (15 min; Gradle's default is 3 h) |
+| `vim.g.jdtls_debug` | `false` | `-Dlog.level=ALL` |
+| `vim.g.jdtls_download_sources` | `false` | Dependency source jars |
+| `vim.g.jdtls_references_codelens` | `false` | Reference counts |
+
+Verified after the change: attach 4.6 s, diagnostics 7.2 s, cross-module
+`gd` resolves, completion returns results. No functionality lost.
+
+### The other language servers are fine
+
+Measured on the same machine, same projects:
+
+| Server | Project | RSS | Verdict |
+|---|---|---|---|
+| `pyright` | pytorch | **42 MB** | Fine, even with `diagnosticMode = "workspace"` |
+| `clangd` | linux kernel | **27–47 MB** | Fine |
+| `gopls` | — | — | Single process, no build daemon; nothing equivalent to spawn |
+| `lemminx` | — | — | The Mason build is a **native GraalVM binary**, not a JVM |
+| `ts_ls`, `eslint`, `html`, `cssls`, `tailwindcss`, `angularls`, `emmet` | — | — | Defaults only, no heavyweight knob set |
+
+**jdtls was the only offender**, and the JVM/daemon architecture is why: it is
+the only server here that starts a second JVM whose heap is configured by the
+project rather than by this config.

@@ -51,12 +51,16 @@ three failure modes and names the file in each:
 | `nvim-dap` | `<leader>d*` keys, `<F5>`–`<F8>`, `cmd = Dap*` | |
 | `harpoon` | `<leader>a`, `<leader>he`, `<leader>hh` | |
 | `lualine.nvim` | `VeryLazy` | Statusline can appear a frame late |
-| `nvim-autopairs` | `InsertEnter` | |
 | `indent-blankline` | `BufReadPost`, `BufNewFile` | |
 | `Comment.nvim` | `BufReadPost`, `BufNewFile` | |
 | `undotree` | `cmd = Undotree*`, `<leader>u` | |
 | `nvim-emmet` | `ft = html, htmlangular, css, scss, less, jsx, tsx, vue, svelte` | Inert without `emmet_language_server` — see [qol.md](qol.md#it-needs-a-language-server) |
 | `rainbow-delimiters.nvim` | `BufReadPost`, `BufNewFile` | |
+| `nvim-treesitter-context` + `nvim-navic` | `BufReadPost`, `BufNewFile`, `<leader>tC` | navic drives the winbar breadcrumb (always on); the treesitter-context overlay is **off by default** because it hides code — see [treesitter.md](treesitter.md#where-am-i-tscontextlua) |
+| `log-highlight.nvim` | `ft = log` | The filetype rule that makes that trigger reachable is registered in `init` — core Neovim never sets `filetype=log` |
+| `persistence.nvim` | `BufReadPre`, `<leader>S*` | Sessions — see [keymap-reference.md](keymap-reference.md) |
+| `glance.nvim` | `cmd = Glance` | Driven by `gr` / `gi` / `<leader>lp` in [lsp.md](lsp.md#find-usages-glance) |
+| `vscode.nvim`, `darcula-dark.nvim` | `lazy = false`, **dependencies of catppuccin** | Load order: lazy.nvim loads dependencies first, so both are on the runtimepath before `colorscheme.lua` picks one — see [colorscheme.md](colorscheme.md) |
 | jupytext / image.nvim / molten | `enabled = vim.g.enable_notebook` | Opt-in, see [jupyter.md](jupyter.md) |
 
 ## Fixes baked into the spec
@@ -125,19 +129,19 @@ in `init`.** That skips the plugin's own autocmd, because Comment.nvim's
 ## Full plugin list
 
 <details>
-<summary>48 plugins</summary>
+<summary>51 plugins</summary>
 
-Comment.nvim, LuaSnip, alpha-nvim, catppuccin, cmp-buffer, cmp-nvim-lsp,
-cmp-path, cmp_luasnip, conform.nvim, copilot-cmp, copilot.lua,
-friendly-snippets, gitsigns.nvim, harpoon, image.nvim, indent-blankline.nvim,
-jupytext.nvim, lazy.nvim, lazygit.nvim, lualine.nvim, mason-lspconfig.nvim,
-mason-nvim-dap.nvim, mason-tool-installer.nvim, mason.nvim, molten-nvim,
-neo-tree.nvim, nui.nvim, nvim-autopairs, nvim-cmp, nvim-dap, nvim-dap-go,
-nvim-dap-python, nvim-dap-ui, nvim-dap-virtual-text, nvim-emmet, nvim-jdtls,
-nvim-lspconfig, nvim-nio, nvim-treesitter, nvim-treesitter-textobjects,
-nvim-ts-context-commentstring, nvim-web-devicons, plenary.nvim,
-rainbow-delimiters.nvim, telescope-dap.nvim, telescope-fzf-native.nvim,
-telescope.nvim, undotree
+Comment.nvim, LuaSnip, alpha-nvim, catppuccin, cmp-buffer, cmp-nvim-lsp, cmp-
+path, cmp_luasnip, conform.nvim, copilot-cmp, copilot.lua, darcula-dark.nvim,
+friendly-snippets, gitsigns.nvim, glance.nvim, harpoon, indent-blankline.nvim,
+lazy.nvim, lazygit.nvim, log-highlight.nvim, lualine.nvim, mason-
+lspconfig.nvim, mason-nvim-dap.nvim, mason-tool-installer.nvim, mason.nvim,
+neo-tree.nvim, nui.nvim, nvim-cmp, nvim-dap, nvim-dap-go, nvim-dap-python,
+nvim-dap-ui, nvim-dap-virtual-text, nvim-emmet, nvim-jdtls, nvim-lspconfig,
+nvim-navic, nvim-nio, nvim-treesitter, nvim-treesitter-context, nvim-
+treesitter-textobjects, nvim-ts-context-commentstring, nvim-web-devicons,
+persistence.nvim, plenary.nvim, rainbow-delimiters.nvim, telescope-dap.nvim,
+telescope-fzf-native.nvim, telescope.nvim, undotree, vscode.nvim
 
 </details>
 

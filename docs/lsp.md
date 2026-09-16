@@ -62,7 +62,13 @@ The warning is deferred with `vim.schedule` so it can't abort startup.
 ## Tools installed by mason-tool-installer
 
 `prettier`, `clang-format`, `black`, `isort`, `stylua`, `google-java-format`,
-`shfmt`
+`shfmt`, `goimports`, `gofumpt`, `ruff`
+
+`goimports` + `gofumpt` are the Go pair (import-fixer, then formatter — the same
+shape as `isort` + `black`). `ruff` is **not** a replacement for isort+black:
+[conform.md](conform.md#1-which-tool-does-this-project-use) picks between them
+per project, so a repo whose `pyproject.toml` declares `[tool.ruff]` gets ruff
+and everything else keeps isort+black.
 
 `eslint_d` used to be in this list and was removed. It is a daemon for
 `nvim-lint` / `null-ls`, and this config has neither: ESLint **diagnostics**
@@ -276,6 +282,40 @@ server actually attached.
 |---|---|---|
 | `<leader>rn` | n | Rename symbol |
 | `<leader>ca` | n, v | Code action |
+
+### No LSP keymaps on big files
+
+Pressing `gd` in a large file used to give:
+
+```
+vim.lsp: method "textDocument/definition" is not supported by any server
+activated for this buffer
+```
+
+[bigfile.md](bigfile.md) detaches the LSP from oversized buffers, but it does so
+from its own `LspAttach` handler via `vim.schedule` — **deferred**. This file's
+handler runs synchronously in the same event, so the order was:
+
+1. server attaches
+2. bigfile *schedules* a detach
+3. this handler maps `gd` / `gr` / `K` / `<leader>l*`
+4. the scheduled detach runs — the client is gone
+
+leaving every LSP keymap pointing at a client that no longer existed.
+Reproduced on pytorch's `common_methods_invocations.py` (1.3 MB): `bigfile=true`,
+`clients=0`, and `gd`/`gr`/`K` all still mapped.
+
+The handler now returns early on a `vim.b.bigfile` buffer. Mapping nothing is
+better than unmapping later: with no buffer-local `gd`, the key falls back to
+Vim's own *go to local declaration*, which is useful in a huge file and costs
+nothing. Same shape as the guard in `start_jdtls()` ([jdtls.md](jdtls.md)).
+
+`:BigFileOff` re-attaches the server, which fires `LspAttach` again, so the
+keymaps come back with it.
+
+> Neovim's **own** buffer-local `K` (`vim.lsp.buf.hover()`) is still mapped on
+> such buffers — that one is core, not this config. It degrades quietly to
+> `keywordprg` rather than erroring.
 
 ### Find usages (glance)
 

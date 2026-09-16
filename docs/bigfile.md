@@ -77,8 +77,19 @@ A notification fires once per buffer telling you what was switched off.
 
 | Command | Action |
 |---|---|
-| `:BigFileOff` | Lift the protections for the current buffer — clears the flags, turns syntax and cursorline back on, restarts treesitter. Use when you actually do need highlighting on a big file and are willing to wait. |
+| `:BigFileOff` | Lift the protections for the current buffer — clears the flags, turns syntax and cursorline back on, restarts treesitter, and **re-attaches any running language server** that handles the filetype. Use when you actually do need highlighting on a big file and are willing to wait. |
 | `:BigFileStatus` | Size in MB, line count, whether the buffer is protected, and the current threshold. |
+
+> **Why the re-attach matters.** [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)
+> now skips mapping `gd` / `gr` / `K` on a flagged buffer — those keymaps used
+> to be created and then left pointing at a client this module had detached,
+> which is what produced
+> `method "textDocument/definition" is not supported by any server`.
+> Without re-attaching, `:BigFileOff` would give you treesitter back but leave
+> the buffer permanently without LSP *and* without its keymaps. The flags are
+> cleared *first*, so the `LspAttach` that follows sees a normal buffer:
+> `lsp.lua` registers the keymaps, and the detach handler here leaves the
+> client alone.
 
 ## Tuning
 

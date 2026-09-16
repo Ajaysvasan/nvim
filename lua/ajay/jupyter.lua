@@ -295,11 +295,15 @@ function M.setup()
         return
       end
       told = true
+      -- Kept (once per session) because this one IS actionable: it names
+      -- the key that starts a kernel, which is not discoverable
+      -- otherwise. Only reachable with vim.g.enable_notebook set.
       vim.notify("Jupyter notebook features available! Use <leader>mi to initialize kernel", vim.log.levels.INFO)
     end,
   })
 
-  vim.notify("✓ Jupyter notebook support configured", vim.log.levels.INFO)
+  -- Same reasoning as copilot.lua: a "configured" toast on every session
+  -- says only that setup() ran.
 
   setup_notebook_ui()
 end

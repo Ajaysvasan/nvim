@@ -189,6 +189,22 @@ end
 -- options here must mirror the lualine spec in plugins.lua -- passing only
 -- `theme` would reset icons_enabled and globalstatus to lualine's defaults.
 local function refresh_lualine(theme)
+  -- Only if lualine is ALREADY loaded.
+  --
+  -- BUG this fixes: lualine's spec is `event = "VeryLazy"`, but this
+  -- function ran on every M.apply() -- including the one in setup() at
+  -- startup -- and `require("lualine")` forces lazy.nvim to load the
+  -- plugin there and then. Measured cost: ~3.1 ms of eager startup for a
+  -- statusline that is explicitly allowed to appear a frame late.
+  --
+  -- Skipping is safe because the lualine SPEC already asks this module
+  -- for the right theme (`theme = colorscheme.lualine_theme()`), so when
+  -- it does load on VeryLazy it comes up correct. This refresh only
+  -- matters for a theme switch mid-session, which by definition happens
+  -- after lualine is up.
+  if not package.loaded["lualine"] then
+    return
+  end
   local ok, lualine = pcall(require, "lualine")
   if not ok then
     return

@@ -113,6 +113,12 @@ local ensure_tools = {
   -- shape as isort+black above.
   "goimports",
   "gofumpt",
+  -- ruff. Not a replacement for isort+black -- conform.lua picks BETWEEN
+  -- them per project: a project whose pyproject.toml declares [tool.ruff]
+  -- gets ruff, everything else keeps isort+black. pytorch is the live
+  -- example. Without this installed, detection would find the preference
+  -- and be unable to honour it.
+  "ruff",
 }
 
 -- Deliberately NOT called at load time -- see "Mason, on demand" at the
@@ -280,6 +286,37 @@ vim.api.nvim_create_autocmd("LspAttach", {
     end
     local bufnr = ev.buf
 
+    -- ── DEAD KEYMAPS ON BIG FILES ────────────────────────────────
+    --
+    -- BUG: pressing gd in a large file gave
+    --   vim.lsp: method "textDocument/definition" is not supported by
+    --   any server activated for this buffer
+    --
+    -- bigfile.lua detaches the LSP from oversized buffers, but it does so
+    -- from its own LspAttach handler via vim.schedule -- i.e. DEFERRED.
+    -- This handler runs synchronously in the same event, so the order was:
+    --
+    --   1. server attaches
+    --   2. bigfile schedules a detach
+    --   3. this handler maps gd / gr / K / <leader>l*   <- still here
+    --   4. the scheduled detach runs, client is gone
+    --
+    -- leaving every LSP keymap pointing at a client that no longer
+    -- exists. Reproduced on pytorch's common_methods_invocations.py
+    -- (1.3 MB): bigfile=true, clients=0, and gd/gr/K all still mapped.
+    --
+    -- Mapping nothing is the right fix rather than unmapping later: with
+    -- no buffer-local gd, `gd` falls back to Vim's own "go to local
+    -- declaration", which is a sensible thing to have in a huge file and
+    -- costs nothing. Same shape as the guard at the top of
+    -- start_jdtls() in jdtls.lua.
+    --
+    -- :BigFileOff re-attaches and this handler runs again, so the keymaps
+    -- come back with the client.
+    if vim.b[bufnr].bigfile then
+      return
+    end
+
     local function map(mode, lhs, rhs, desc)
       vim.keymap.set(mode, lhs, rhs, { buffer = bufnr, silent = true, desc = desc })
     end
@@ -386,6 +423,18 @@ vim.api.nvim_create_autocmd("LspAttach", {
     map("n", "<leader>lwl", function()
       print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
     end, "List workspace folders")
+
+    -- Winbar breadcrumb. navic reads textDocument/documentSymbol, so it
+    -- must be attached per client and only where the server provides it
+    -- (jdtls, pyright, gopls, ts_ls all do; some servers do not).
+    -- auto_attach is off in tscontext.lua so this is the single place it
+    -- happens, after the bigfile guard above.
+    if client:supports_method("textDocument/documentSymbol") then
+      local ok_navic, navic = pcall(require, "nvim-navic")
+      if ok_navic then
+        pcall(navic.attach, client, bufnr)
+      end
+    end
 
     -- tsserver formatting off — conform/prettier owns JS/TS.
     if client.name == "ts_ls" then

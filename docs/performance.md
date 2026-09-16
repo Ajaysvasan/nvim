@@ -32,7 +32,7 @@ The numbers people actually feel. Same machine, warm caches:
 |---|---|---|
 | Typing, per keystroke | **0.007 ms** | Normal-size file |
 | Typing, per keystroke | **0.435 ms** | Inside a 5 000-line file |
-| Typing brackets/quotes | **0.011 ms** | Exercises nvim-autopairs |
+| Typing brackets/quotes | **0.011 ms** | Measured when `nvim-autopairs` was still installed; it has since been [removed](qol.md#no-autopairs--removed-on-purpose), so this path is now plain insertion |
 | Cursor move `j` | **0.002 ms** | 5 000-line file |
 | Random jump + `zz` | **0.003 ms** | 5 000-line file |
 | Buffer switch `:bnext` | **0.30 ms** | Small buffers |

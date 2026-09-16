@@ -705,13 +705,49 @@ local function start_jdtls(bufnr)
     "-Dosgi.bundles.defaultStartLevel=4",
     "-Declipse.product=org.eclipse.jdt.ls.core.product",
     "-Dlog.protocol=true",
-    "-Dlog.level=ALL",
-    -- MEASURED: 2g OOM'd indexing kafka (6k+ files, ~20 Gradle modules) --
-    -- "OutOfMemoryError: Java heap space" while writing the JDT core
-    -- index, which then corrupted the index file and left the server
-    -- stuck reimporting on every restart. 2g is fine for an ordinary
-    -- single-module project; 4g is what it took to index kafka clean.
-    "-Xmx4g",
+    -- WAS "-Dlog.level=ALL", i.e. maximum verbosity, which makes jdtls
+    -- write every debug message it has for the whole indexing run. On
+    -- kafka that is a large, continuously-appended file and the CPU to
+    -- format it, in exchange for output nobody reads unless something is
+    -- broken. WARNING keeps the errors that :JdtlsLog exists to show.
+    -- Set vim.g.jdtls_debug = true for the old behaviour.
+    vim.g.jdtls_debug and "-Dlog.level=ALL" or "-Dlog.level=WARNING",
+    -- ── HEAP AND GC ──────────────────────────────────────────────
+    --
+    -- MEASURED on kafka, warm workspace, with the old "-Xmx4g" and no GC
+    -- flags: peak 1673 MB RSS at 277% CPU, then the heap SAT at 1431 MB
+    -- for a full minute at 0% CPU before anything was collected.
+    --
+    -- That idle plateau is the whole problem. The JVM's default
+    -- GCTimeRatio is 99, i.e. "spend at most 1% of time collecting" --
+    -- tuned for throughput on a server, not for an editor sidecar. Given
+    -- a 4 GB ceiling it simply had no reason to give memory back.
+    --
+    -- History worth keeping: -Xmx was raised to 4g earlier because 2g hit
+    -- an OutOfMemoryError on kafka. That OOM was NOT a sizing problem --
+    -- it was the duplicate-server bug (two jdtls processes writing one
+    -- workspace, see start_jdtls above), which is fixed. The ceiling was
+    -- treating a symptom.
+    --
+    --   GCTimeRatio=4          spend up to 20% of time in GC, not 1%
+    --   AdaptiveSizePolicyWeight=90  weight recent behaviour, shrink fast
+    --   UseParallelGC          smaller footprint than G1 for this shape
+    --   disableMemoryMapping   jdtls opens hundreds of jars; mmap'ing
+    --                          them inflates RSS for no gain here
+    --   -Xms100m               start small instead of jdtls's own -Xms1G
+    --
+    -- 2g, not 1g, and that was measured rather than guessed. At -Xmx1g a
+    -- cold kafka import sat pinned at 1.0-1.2 GB RSS for 196 s and had
+    -- still not finished -- the heap was permanently full, so the JVM
+    -- spent its time collecting instead of working. At 2g the same import
+    -- finished by ~126 s and then fell to 47 MB. Squeezing the ceiling
+    -- traded a slightly lower peak for a much longer, hotter import.
+    "-Xms100m",
+    "-Xmx" .. (vim.g.jdtls_max_heap or "2g"),
+    "-XX:+UseParallelGC",
+    "-XX:GCTimeRatio=4",
+    "-XX:AdaptiveSizePolicyWeight=90",
+    "-Dsun.zip.disableMemoryMapping=true",
     "--add-modules=ALL-SYSTEM",
     "--add-opens",
     "java.base/java.util=ALL-UNNAMED",
@@ -763,8 +799,18 @@ local function start_jdtls(bufnr)
     },
     settings = {
       java = {
-        eclipse = { downloadSources = true },
-        maven = { downloadSources = true },
+        -- Source jars for EVERY dependency, downloaded and indexed up
+        -- front. On a project with kafka's dependency tree that is a large
+        -- share of the 587 MB workspace index and of the memory spent
+        -- building it -- paid on every project, whether or not you ever
+        -- read a library's source.
+        --
+        -- Navigation into libraries still works with this off:
+        -- includeDecompiledSources below decompiles on demand, so `gd`
+        -- into a dependency lands on readable code (without the original
+        -- comments). Set vim.g.jdtls_download_sources = true to go back.
+        eclipse = { downloadSources = vim.g.jdtls_download_sources == true },
+        maven = { downloadSources = vim.g.jdtls_download_sources == true },
         configuration = {
           updateBuildConfiguration = "interactive",
           -- Populated from whatever JDKs actually exist on THIS machine.
@@ -774,13 +820,62 @@ local function start_jdtls(bufnr)
           runtimes = detect_runtimes(),
         },
         implementationsCodeLens = { enabled = true },
-        referencesCodeLens = { enabled = true },
+        -- A reference count on every method means a PROJECT-WIDE search
+        -- per method in the visible buffer, recomputed as you scroll.
+        -- Implementations are a type-hierarchy lookup and far cheaper, so
+        -- that one stays. Set vim.g.jdtls_references_codelens = true if
+        -- you want the counts back.
+        referencesCodeLens = { enabled = vim.g.jdtls_references_codelens == true },
+        -- Cap the background compiler's parallelism. Left at the default
+        -- it will happily saturate every core on a 20-module build, which
+        -- is what put CPU at 277% in the measurement above.
+        maxConcurrentBuilds = 1,
         references = { includeDecompiledSources = true },
         format = { enabled = true },
         signatureHelp = { enabled = true, description = { enabled = true } },
         contentProvider = { preferred = "fernflower" },
         import = {
-          gradle = { enabled = true, wrapper = { enabled = true } },
+          gradle = {
+            enabled = true,
+            wrapper = { enabled = true },
+            -- ── THE ACTUAL MEMORY HOG ────────────────────────────
+            --
+            -- jdtls imports a Gradle project through the Tooling API,
+            -- which starts a **separate Gradle daemon JVM**. MEASURED on
+            -- kafka: that daemon peaked at 2046 MB, settled at 1785 MB
+            -- at 0% CPU, and was STILL RUNNING after Neovim exited.
+            -- jdtls's own process, by comparison, settles under 100 MB.
+            --
+            -- It inherits its JVM args from the PROJECT's
+            -- gradle.properties, and kafka's says:
+            --     org.gradle.jvmargs=-Xmx4g -Xss4m -XX:+UseParallelGC
+            -- so the daemon had a 4 GB ceiling and the same "no reason to
+            -- collect" behaviour the main heap had.
+            --
+            -- These args override that **for jdtls's import only**. The
+            -- project's gradle.properties is untouched, so `./gradlew
+            -- build` in a terminal still gets the full 4 GB it asks for --
+            -- a real build should be allowed to be fast; a background
+            -- model-import for an editor should not cost 2 GB.
+            --
+            -- idletimeout caps how long it lingers afterwards (Gradle's
+            -- default is 3 hours).
+            -- --no-daemon makes the Tooling API use a SINGLE-USE daemon:
+            -- it still forks a JVM to read the build model, but that JVM
+            -- exits when the import finishes instead of idling for three
+            -- hours. Costs a slower re-import (no warm daemon), which is
+            -- fine because updateBuildConfiguration is "interactive" --
+            -- re-imports happen when you ask, not on every keystroke.
+            arguments = "--no-daemon",
+            jvmArguments = table.concat({
+              "-Xmx" .. (vim.g.jdtls_gradle_max_heap or "1g"),
+              "-Xms100m",
+              "-XX:+UseParallelGC",
+              "-XX:GCTimeRatio=4",
+              "-XX:AdaptiveSizePolicyWeight=90",
+              "-Dorg.gradle.daemon.idletimeout=" .. (vim.g.jdtls_gradle_idle_ms or 900000),
+            }, " "),
+          },
           maven = { enabled = true },
         },
         completion = {

@@ -151,7 +151,36 @@ function M.setup()
       vim.opt_local.cursorline = true
     end)
     pcall(vim.treesitter.start, buf)
-    vim.notify("Big-file protections lifted for this buffer.", vim.log.levels.INFO)
+
+    -- Re-attach any already-running server that handles this filetype.
+    --
+    -- Without this, :BigFileOff gave you treesitter back but left the
+    -- buffer permanently without LSP -- and since lsp.lua now skips
+    -- mapping gd/gr/K on a bigfile buffer, without their keymaps too.
+    --
+    -- Order matters: the flags above are cleared FIRST, so when
+    -- buf_attach_client fires LspAttach, lsp.lua sees a normal buffer and
+    -- registers the keymaps, while the detach handler in this file sees
+    -- the same and leaves the client alone.
+    local ft = vim.bo[buf].filetype
+    local reattached = {}
+    for _, client in ipairs(vim.lsp.get_clients()) do
+      local fts = client.config and client.config.filetypes
+      if not fts or vim.tbl_contains(fts, ft) then
+        if pcall(vim.lsp.buf_attach_client, buf, client.id) then
+          table.insert(reattached, client.name)
+        end
+      end
+    end
+
+    vim.notify(
+      "Big-file protections lifted for this buffer."
+        .. (
+          #reattached > 0 and ("\nRe-attached: " .. table.concat(reattached, ", "))
+          or "\nNo language server was running to re-attach; reopen the file to start one."
+        ),
+      vim.log.levels.INFO
+    )
   end, { desc = "Re-enable treesitter/LSP on a large buffer" })
 
   vim.api.nvim_create_user_command("BigFileStatus", function()

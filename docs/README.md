@@ -32,7 +32,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 | [neotree.md](neotree.md) | `neotree.lua` | File explorer |
 | [icons.md](icons.md) | `icons.lua` | Nerd Font glyphs defined by codepoint |
 | [transparency.md](transparency.md) | `transparency.lua` | Transparent-background toggle |
-| [qol.md](qol.md) | `plugins.lua` inline | lualine, autopairs, indent guides, undotree, emmet, rainbow delimiters |
+| [qol.md](qol.md) | `plugins.lua` inline | lualine, indent guides, undotree, emmet, rainbow delimiters |
 
 ## Editing & language support
 
@@ -42,6 +42,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 | [cmp.md](cmp.md) | `cmp.lua` | Completion, LuaSnip, custom snippets |
 | [copilot.md](copilot.md) | `copilot.lua` | GitHub Copilot with persisted on/off |
 | [treesitter.md](treesitter.md) | `treesitter.lua` | Highlighting, indent, textobjects (`main` branch) |
+| [treesitter.md#where-am-i-tscontextlua](treesitter.md#where-am-i-tscontextlua) | `tscontext.lua` | Winbar breadcrumb showing the enclosing class/method, plus an opt-in sticky overlay |
 | [conform.md](conform.md) | `conform.lua` | Formatting and format-on-save |
 | [comment.md](comment.md) | `comment.lua` | Comment toggling and the `Ctrl+/` story |
 | [telescope.md](telescope.md) | `telescope.lua` | Fuzzy finder and all `<leader>f` mappings |

@@ -140,7 +140,10 @@ function M.setup()
     silent = true,
   })
 
-  vim.notify("✓ GitHub Copilot configured", vim.log.levels.INFO)
+  -- No "configured" notification. It fired on every session the moment
+  -- you entered insert mode, and announced only that setup() had run --
+  -- which is not information you can act on. Real state is one keypress
+  -- away with <leader>cs (:Copilot status).
 end
 
 return M

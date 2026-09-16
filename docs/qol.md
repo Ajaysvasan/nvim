@@ -1,7 +1,8 @@
 # Quality-of-life plugins
 
-Five plugins configured inline in `plugins.lua` — small enough that they don't
-need their own module file.
+Four plugins configured inline in `plugins.lua` — small enough that they don't
+need their own module file. (`nvim-autopairs` was a fifth and has been
+[removed](#no-autopairs--removed-on-purpose).)
 
 ## lualine.nvim — statusline
 
@@ -10,22 +11,27 @@ Loads on `VeryLazy` (the statusline can appear a frame late).
 | Setting | Value | Why |
 |---|---|---|
 | `icons_enabled` | `vim.g.have_nerd_font ~= false` | Follows the global font flag — falls back to text-only on a machine without a patched font |
-| `theme` | `"catppuccin-frappe"` | Matches [the colorscheme](colorscheme.md). **Was `"catppuccin"`, which does not exist** — catppuccin ships one lualine theme per flavour (`catppuccin-latte/-frappe/-macchiato/-mocha`, plus `catppuccin-nvim`) and no bare `catppuccin`. lualine silently fell back to `auto` and warned *"There are some issues with your config. Run `:LualineNotices`"* on every launch. Change this whenever you change the flavour in `colorscheme.lua`. |
+| `theme` | `colorscheme.lualine_theme()` | **Follows the active theme.** The config ships three ([colorscheme.md](colorscheme.md)), so this is no longer a hardcoded name — the spec asks the theme registry, and a mid-session switch re-runs `lualine.setup()`. *Historic bug:* it was once `"catppuccin"`, which is not a lualine theme (catppuccin ships one per flavour), so lualine silently fell back to `auto` and warned on every launch. |
 | `globalstatus` | `true` | **One statusline for the whole window**, not one per split. With a file tree and a DAP panel open, per-split statuslines waste three rows and repeat the same information. |
 
 Everything else is lualine's default section layout.
 
 **Keymaps:** none.
 
-## nvim-autopairs
+## No autopairs — removed on purpose
 
-Loads on `InsertEnter`, `config = true` (plugin defaults).
+`nvim-autopairs` used to live here and has been **removed**. Nothing in this
+config auto-inserts a closing bracket or quote any more.
 
-Inserts the closing bracket/quote as you type the opening one, and skips over the
-closing one if you type it yourself. It integrates with nvim-cmp out of the box
-so confirming a function completion adds the parentheses.
+Auto-pairing fights you about as often as it helps: it guesses wrong when you
+are typing into existing code, and the "type the closing character to skip over
+it" behaviour silently swallows keystrokes, which is hard to notice and harder
+to undo. Typing both halves yourself is predictable.
 
-**Keymaps:** none — it works on the characters you already type.
+Verified after removal: typing `foo("bar` leaves exactly `foo("bar`.
+
+> The `!` HTML/JSX snippets in [cmp.md](cmp.md) still expand to matched tags —
+> that is an explicit expansion you ask for by name, not automatic pairing.
 
 ## indent-blankline.nvim (ibl)
 

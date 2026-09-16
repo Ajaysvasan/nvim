@@ -17,6 +17,7 @@ except where noted.
 | `:ToggleFormatOnSave` | conform | Global format-on-save toggle — **persisted to disk, survives a restart** |
 | `:ToggleFormatOnSaveBuffer` | conform | Buffer-local toggle — this session only |
 | `:FormatStatus` | conform | Report both toggle states plus the value saved on disk |
+| `:FormatDetect` | conform | Which formatters this project resolves to, and why. `!` re-scans after adding a config file |
 | `:ConformInfo` | conform *(plugin built-in)* | Which formatter would run here, and is it installed |
 
 ## LSP
@@ -80,6 +81,8 @@ except where noted.
 | `:ToggleTransparency` | [transparency](transparency.md) | Toggle transparent background (`<leader>tt`) |
 | `:Theme [name]` | colorscheme | Pick a colorscheme, or apply one by name (tab-completes). Remembered across restarts |
 | `:ThemeNext` | colorscheme | Cycle to the next colorscheme |
+| `:TSContextToggle` | tscontext | Toggle the pinned class/method header (also `<leader>tC`) |
+| `:TSContextEnable` / `:TSContextDisable` | tscontext | Explicit on / off |
 
 ## Plugin-provided commands you'll use often
 
