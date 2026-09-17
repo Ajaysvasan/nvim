@@ -27,7 +27,7 @@
 --       0.12 :  :lsp restart  :checkhealth vim.lsp  (core, `:h :lsp`)
 --
 --     :checkhealth vim.lsp works on BOTH — it is what LspInfo aliases to
---     on 0.11 — which is why the dashboard button uses it.
+--     on 0.11 — so prefer it over the version-specific names.
 
 -- ── Diagnostics ────────────────────────────────────────────────────
 -- Glyphs come from ajay.icons, which builds them from codepoints rather
@@ -72,36 +72,19 @@ local ensure_servers = {
   "pyright",
   "clangd",
   "jdtls",
-  "ts_ls",
-  "eslint",
-  "html",
-  "cssls",
-  "lua_ls",
-  "tailwindcss",
-  -- Angular. filetypes = typescript, html, typescriptreact, htmlangular;
-  -- root_markers = angular.json / nx.json, so it starts ONLY inside an
-  -- actual Angular workspace and stays out of the way in every other
-  -- TypeScript project. Without it a .component.html gets the generic
-  -- html server, which has never heard of *ngIf, [(ngModel)] or @if.
-  "angularls",
-  -- Emmet. nvim-emmet (<leader>xe) is not a standalone expander -- it
-  -- sends emmet/expandAbbreviation over LSP and does NOTHING if no server
-  -- answers. That keymap was silently dead until this server existed.
-  "emmet_language_server",
   "gopls",
-  -- lemminx. Also covers pom.xml (see the treesitter "xml" entry) and
-  -- Android/Spring XML config -- no settings needed, lspconfig's own
-  -- defaults (filetypes, root_markers) are already right for it.
-  "lemminx",
+  -- rust_analyzer is NEW on this branch. The full config never had Rust
+  -- support at all, so "keep the Rust LSP" meant adding one.
+  "rust_analyzer",
+  -- lua_ls is not one of the target languages. It is here to keep THIS
+  -- config editable: completion on the vim.* API, and the `vim` global
+  -- declared so it is not an undefined variable in every file.
+  "lua_ls",
 }
 
 local ensure_tools = {
-  "prettier",
-  -- eslint_d was here. Nothing used it: it is a daemon for nvim-lint /
-  -- null-ls, and this config has neither -- ESLint diagnostics come from
-  -- the `eslint` language server above, and fixes from LspEslintFixAll on
-  -- BufWritePre. Keeping it meant a package to install and update that
-  -- could never affect the editor.
+  -- prettier went with the web stack: nothing left here is a filetype it
+  -- formats.
   "clang-format",
   "black",
   "isort",
@@ -210,44 +193,6 @@ vim.lsp.config("lua_ls", {
   },
 })
 
--- angularls ships `root_markers = { "angular.json", "nx.json" }`, which is
--- NOT a gate. When no marker matches, vim.lsp leaves root_dir nil and
--- starts the server anyway in single-file mode -- so a plain React or
--- Node project was spawning an ngserver process for every .ts, .tsx and
--- .html buffer it opened.
---
--- A root_dir FUNCTION is the actual gate: the client only starts if
--- on_dir() is called, so returning without calling it means "not an
--- Angular workspace, do not start".
-vim.lsp.config("angularls", {
-  root_dir = function(bufnr, on_dir)
-    local fname = vim.api.nvim_buf_get_name(bufnr)
-    local start = fname ~= "" and fname or vim.fn.getcwd()
-    local root = vim.fs.root(start, { "angular.json", "nx.json" })
-    if root then
-      on_dir(root)
-    end
-  end,
-})
-
-vim.lsp.config("tailwindcss", {
-  settings = {
-    tailwindCSS = {
-      classAttributes = { "class", "className", "classList", "ngClass" },
-      lint = {
-        cssConflict = "warning",
-        invalidApply = "error",
-        invalidConfigPath = "error",
-        invalidScreen = "error",
-        invalidTailwindDirective = "error",
-        invalidVariant = "error",
-        recommendedVariantOrder = "warning",
-      },
-      validate = true,
-    },
-  },
-})
-
 -- ── Neovim 0.11's built-in gr* maps ────────────────────────────────
 --
 -- 0.11 added a global LSP mapping family in runtime/lua/vim/_defaults.lua:
@@ -311,9 +256,15 @@ vim.api.nvim_create_autocmd("LspAttach", {
     -- costs nothing. Same shape as the guard at the top of
     -- start_jdtls() in jdtls.lua.
     --
-    -- :BigFileOff re-attaches and this handler runs again, so the keymaps
+    -- :BigFile re-attaches and this handler runs again, so the keymaps
     -- come back with the client.
-    if vim.b[bufnr].bigfile then
+    --
+    -- Gated on `bigfile_no_lsp`, NOT `bigfile`. A merely large file keeps
+    -- its language server now -- LSP runs out of process and does not block
+    -- redraw, so it is the last thing that should go. Only the extreme
+    -- tiers (> lsp_max_bytes, or a pathological single-line file) detach,
+    -- and only those should skip the keymaps.
+    if vim.b[bufnr].bigfile_no_lsp then
       return
     end
 
@@ -424,40 +375,12 @@ vim.api.nvim_create_autocmd("LspAttach", {
       print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
     end, "List workspace folders")
 
-    -- Winbar breadcrumb. navic reads textDocument/documentSymbol, so it
-    -- must be attached per client and only where the server provides it
-    -- (jdtls, pyright, gopls, ts_ls all do; some servers do not).
-    -- auto_attach is off in tscontext.lua so this is the single place it
-    -- happens, after the bigfile guard above.
-    if client:supports_method("textDocument/documentSymbol") then
-      local ok_navic, navic = pcall(require, "nvim-navic")
-      if ok_navic then
-        pcall(navic.attach, client, bufnr)
-      end
-    end
-
-    -- tsserver formatting off — conform/prettier owns JS/TS.
-    if client.name == "ts_ls" then
-      client.server_capabilities.documentFormattingProvider = false
-      client.server_capabilities.documentRangeFormattingProvider = false
-    end
-
     -- Same move for gopls — conform/goimports+gofumpt owns Go formatting,
     -- so gopls's own (plain gofmt-equivalent) formatter should never be
     -- what a stray vim.lsp.buf.format() call reaches for instead.
     if client.name == "gopls" then
       client.server_capabilities.documentFormattingProvider = false
       client.server_capabilities.documentRangeFormattingProvider = false
-    end
-
-    -- ESLint auto-fix on save
-    if client.name == "eslint" then
-      vim.api.nvim_create_autocmd("BufWritePre", {
-        buffer = bufnr,
-        callback = function()
-          pcall(vim.cmd, "LspEslintFixAll")
-        end,
-      })
     end
 
     -- Inlay hints. Colon call form — required on 0.11+.
@@ -487,7 +410,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
     --     0.13. It printed a deprecation warning on every attach.
     --
     -- One call, same shape as inlay hints above, and Neovim owns the
-    -- lifecycle. Skipped entirely on big files (see ajay/bigfile.lua).
+    -- lifecycle. Skipped on protected buffers (see ajay/bigfile.lua).
     if client:supports_method("textDocument/codeLens") then
       if not vim.g.codelens_off and not vim.b[bufnr].codelens_off then
         -- compat.codelens, not vim.lsp.codelens: on 0.12 this IS
@@ -559,12 +482,11 @@ end, { desc = "Toggle inlay hints" })
 -- global binary name, so name them here. Getting this wrong is silent:
 -- the server is simply never enabled and nothing is logged.
 local fallback_bin = {
-  ts_ls = "typescript-language-server",
-  eslint = "vscode-eslint-language-server",
-  html = "vscode-html-language-server",
-  cssls = "vscode-css-language-server",
-  tailwindcss = "tailwindcss-language-server",
-  angularls = "ngserver",
+  -- Only jdtls still needs an entry. Every other server that shipped a
+  -- `cmd` FUNCTION rather than a table (ts_ls, eslint, html, cssls,
+  -- tailwindcss, angularls) belonged to the web stack and is gone;
+  -- pyright, clangd, gopls, rust_analyzer and lua_ls all ship a plain
+  -- `cmd` table that server_bin() reads directly.
   jdtls = "jdtls",
 }
 

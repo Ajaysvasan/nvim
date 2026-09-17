@@ -12,22 +12,9 @@ Loads on `BufWritePre`, `:ConformInfo`, `:Format`, or `<leader>lf`.
 |---|---|
 | `lua` | `stylua` |
 | `python` | `isort` then `black` (imports sorted first, then reformat) |
-| `javascript`, `javascriptreact`, `typescript`, `typescriptreact` | `prettier` |
-| `html`, **`htmlangular`**, `css`, `scss`, `json`, `jsonc`, `yaml`, `markdown` | `prettier` |
 | `c`, `cpp` | `clang_format` |
 | `java` | `google-java-format` |
 | `sh`, `bash` | `shfmt` |
-
-### Why `htmlangular` is listed separately
-
-Angular templates are their **own filetype**, so the `html` entry never reached
-them — `<leader>lf` and format-on-save were both silent no-ops in every
-`.component.html`.
-
-Plain `prettier` is enough; no `--parser angular` needed. Its html parser
-already handles `*ngIf`, `[(ngModel)]`, `(click)`, `{{ interpolation }}` and
-Angular 17 `@if` / `@for` control-flow blocks — verified byte-identical output
-between the two parsers on all of them.
 
 All of these are installed by `mason-tool-installer` — see [lsp.md](lsp.md).
 
@@ -42,14 +29,13 @@ actually runs is resolved per project, answering two separate questions.
 |---|---|---|
 | `python` | `[tool.ruff]` in `pyproject.toml`, or `ruff.toml` | `ruff_organize_imports` + `ruff_format` |
 | `python` | anything else | `isort` + `black` |
-| `js`/`ts`/`jsx`/`tsx`/`json` | `biome.json` | `biome` |
-| `js`/`ts`/`jsx`/`tsx`/`json` | anything else | `prettier` |
 
 pytorch is the live example: its `pyproject.toml` declares `[tool.ruff]` and
 `[tool.ruff.format]`, so running black there would be the wrong tool entirely.
 
-Only those filetypes route through biome detection — biome cannot parse `html`,
-`scss`, `yaml` or `markdown`, so those stay on prettier unconditionally.
+Python is the only filetype with competing toolchains on this branch, so it is
+the only one that routes through tool detection. The rest resolve straight to
+the table above.
 
 > **Detection never selects a tool that is not installed.** Doing so would make
 > conform report "formatter unavailable" and silently fall through to the LSP,
@@ -64,9 +50,13 @@ defaults in this file silently overrode whatever the project asked for:
 
 | | |
 |---|---|
-| project's `.prettierrc` | `{ "singleQuote": true, "semi": false }` |
-| prettier on its own | `const greeting = 'hello'` |
-| **this config, before** | `const greeting = "hello";` |
+| project's `stylua.toml` | `indent_type = "Tabs"` |
+| stylua on its own | a tab-indented file |
+| **this config, before** | two spaces, because `--indent-type Space` was on the command line |
+
+> The original demonstration of this bug used prettier and a `.prettierrc`
+> asking for `singleQuote`/`no-semi`; prettier is gone from this branch, but the
+> mechanism and the fix are identical for every formatter listed below.
 
 On a shared repo that means every save rewrites files to one developer's taste —
 diff noise, and a failing lint job in the project's own CI.
@@ -76,14 +66,12 @@ pass nothing and let the tool read it:
 
 | Formatter | Suppressed when the project has |
 |---|---|
-| `prettier` | any `.prettierrc*` / `prettier.config.*`, or a `"prettier"` key in `package.json` |
 | `stylua` | `stylua.toml` / `.stylua.toml` |
 | `black` | `[tool.black]` in `pyproject.toml` |
 | `clang_format` | — never had args; `.clang-format` was always honoured |
 
-Verified: with a project `stylua.toml` asking for tabs, formatting produces
-tabs; with none, it produces this config's 2-space default. Same for prettier
-in both directions.
+Verified in both directions: with a project `stylua.toml` asking for tabs,
+formatting produces tabs; with none, it produces this config's 2-space default.
 
 > `google-java-format`'s two flags stay **unconditional**, unlike the rest.
 > `--skip-removing-unused-imports` and `--skip-sorting-imports` are not a style
@@ -94,10 +82,8 @@ in both directions.
 ### Project-local binaries
 
 A pinned formatter version matters: black's output changes between majors
-(string normalisation, the magic trailing comma), as does prettier's.
+(string normalisation, the magic trailing comma).
 
-- **prettier** — conform already resolves `node_modules/.bin/prettier` itself,
-  so a project pinning prettier 2 is formatted by prettier 2.
 - **black / isort / ruff** — conform ships these with a bare `command`, so they
   used whatever Mason installed globally. They now resolve from the project's
   virtualenv first (`.venv/bin`, `venv/bin`, `env/bin`), falling back to the
@@ -115,11 +101,10 @@ Formatters for this buffer:
 
 Detected in this project:
   python tool : black   [project asks for ruff]
-  web tool    : prettier
 
 Project states its own style (we pass no style flags):
-  prettier    : no
   stylua      : no
+  black       : no
   ...
 
 ! This project wants ruff, but ruff is not installed.
@@ -203,8 +188,8 @@ Format on save:
   Buffer: ENABLED ✓  (this session only)
 ```
 
-Same one-word-state-file pattern as the Copilot toggle in
-[copilot.md](copilot.md), and stored under `stdpath("data")` — **outside this
+Same one-word-state-file pattern as the colorscheme choice in
+[colorscheme.md](colorscheme.md), and stored under `stdpath("data")` — **outside this
 git repo** — so the preference follows the machine, not the config.
 
 **Only the global toggle persists.** `:ToggleFormatOnSaveBuffer` deliberately
@@ -222,7 +207,6 @@ again.
 | Formatter | Args | Why |
 |---|---|---|
 | `stylua` | `--indent-type Spaces --indent-width 2` | Lua files in this config are 2-space, unlike the global `shiftwidth = 4` |
-| `prettier` | `--tab-width 2 --use-tabs false --single-quote false --trailing-comma es5 --semi true` | Web files are 2-space, double-quoted, semicolons on |
 | `black` | `--line-length 88` | Black's own default, stated explicitly |
 | `google-java-format` | `--skip-removing-unused-imports --skip-sorting-imports` | **See below** |
 
@@ -275,5 +259,4 @@ Imports belong to jdtls — use `<leader>jo` to organize them deliberately.
 
 ## Related
 
-- [lsp.md](lsp.md) — `ts_ls` formatting is disabled so prettier owns JS/TS
 - [jdtls.md](jdtls.md) — Java imports

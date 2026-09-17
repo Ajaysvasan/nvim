@@ -33,8 +33,8 @@ Reports whether devicons loaded, then resolves the icon and highlight group for
 `init.lua`, `main.py`, `Main.java`, `App.tsx` and `main.cpp`.
 
 *The key inference:* if the bracketed characters are present **here** but you see
-nothing in neo-tree, the plugin is fine and it **is** the font. If devicons isn't
-loaded, open neo-tree once with `<C-n>` and re-run.
+nothing in a file listing, the plugin is fine and it **is** the font. If
+devicons isn't loaded, open any picker (`<leader>ff`) once and re-run.
 
 ### CLIPBOARD
 - Current `'clipboard'` option value

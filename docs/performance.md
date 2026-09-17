@@ -19,8 +19,7 @@ disk — see [Then cached to disk](#then-cached-to-disk--108-ms--68-ms-on-kafka)
 It is lower than the Maven row above because that 196 ms figure predates the
 disk cache.
 
-Re-measured after the language-server fixes (`angularls` and
-`emmet_language_server` added, `eslint_d` dropped): **unchanged**. Enabling a
+Re-measured after the language-server changes: **unchanged**. Enabling a
 server costs nothing at startup — `vim.lsp.enable()` only registers it, and the
 client is not started until a matching buffer opens.
 
@@ -104,74 +103,51 @@ nothing to run. Worth knowing, not worth removing.
 > config. Recorded here because "measure it twice before you tune it" is the
 > actual lesson; nothing was changed on the strength of it.
 
-### The JDK scan was the worst offender — 762 ms → 196 ms
+### The JDK scan — optimised hard, then deleted
 
-Found by benchmarking, not by reading code, and it had been there the whole
-time. [`jdtls.lua`](jdtls.md#jdk-discovery) probes for installed JDKs by
-shelling out: `/usr/libexec/java_home -V`, plus `java -version` for each
-candidate it cannot version any other way. **`java -version` costs ~150 ms** —
-it boots a JVM to print one line.
+This was once the worst offender on the Java path, and the history is worth
+keeping because the ending is the interesting part.
 
-Three separate callers need that list, and it cached nothing, so opening a
-single Java file ran the whole probe **four times**:
+**The problem.** Resolving which JDK to use shelled out: one
+`/usr/libexec/java_home -V`, plus a `java -version` per candidate — and
+`java -version` costs ~150 ms because it boots a JVM to print one line. Three
+callers needed the answer, so uncached it ran the full probe four times per Java
+buffer: **13 subprocesses, ~762 ms** of blocking work before the file was
+editable, every pass returning the same thing.
 
-| | Before | After |
-|---|---|---|
-| Subprocesses per Java buffer | 13 | **4** |
-| `nvim Main.java` | 762 ms | **196 ms** |
+**The optimisation.** Memoised per session (~196 ms), then persisted to
+`stdpath("cache")/ajay-jdtls-probe.json` keyed on the jdtls jar filename, with
+`executable()` re-checks and a `:JdtlsRescanJDKs` escape hatch. That took the
+first Java file from **108 ms → 68 ms**, and the probe itself from 34.8 ms to
+0.2 ms.
 
-The fix is one memo: the set of installed JDKs cannot change while Neovim is
-running. `:JdtlsRescanJDKs` busts it if you install one mid-session. Verified
-identical behaviour afterwards — same launcher (Zulu 21), same runtimes
-(JavaSE-21, JavaSE-17), JDK 26 still correctly excluded by `MAX_EE`.
+**Then the whole thing was deleted.** On the `minimal` branch `$JAVA_HOME` is
+the source of truth ([jdtls.md](jdtls.md#jdk-discovery)), which removed ~490
+lines: the multi-source scanner, the disk cache and its invalidation rules, the
+manifest-reading minimum-version lookup, and `:JdtlsRescanJDKs`.
 
-**The lesson generalises:** anything calling `vim.fn.system()` on a buffer event
-should be assumed to run more often than you think, and cached unless the answer
-can actually change between calls.
+**What that cost, measured on kafka:**
 
-#### Then cached to disk — 108 ms → 68 ms on kafka
-
-Re-measured against a real monorepo (`~/Documents/kafka`, ~6 200 Java files, 20+
-Gradle modules) the memo turned out not to be the end of it. It is a *session*
-memo, so the probe still ran **once per session**, on the first Java file you
-open, and all of it is blocking subprocess work:
-
-| Call | Cost |
+| | First Java file of the session |
 |---|---|
-| `/usr/libexec/java_home -V` | 41 ms |
-| `unzip -p <jdt core jar> META-INF/MANIFEST.MF` | 17 ms |
-| `java -version` (per JDK it cannot version otherwise) | 48 ms each |
+| `main` (disk-cached scanner) | **68 ms** |
+| `minimal` (`$JAVA_HOME`) | **203 ms** |
 
-That is exactly why the **first** Java file measured 108 ms while every one
-after it measured 7 ms. The set of installed JDKs changes when you install a
-JDK — roughly never — so paying it every session is pure waste.
+The remaining 203 ms is two `java -version` spawns and one `java_home` call,
+**once per session** — a session memo (four lines, no disk, no invalidation
+command) takes every later call to 0.009 ms. Requiring the module still costs
+0.1 ms; nothing probes at load time.
 
-It is now persisted to `stdpath("cache")/ajay-jdtls-probe.json`. Invalidation is
-the whole game, and it is deliberately cheap:
+So this is a genuine regression of ~135 ms, paid once, on an operation where
+jdtls then takes ~3 s to become useful. It is not perceptible, and it buys back
+a large amount of the most bug-prone code in the config — two of the fixed bugs
+recorded on this page lived in that scanner. Worth stating plainly rather than
+filing under "simplified".
 
-- **Every cached JDK path is re-checked with `executable()`** — an fs stat,
-  microseconds, not a subprocess. A JDK you deleted or moved invalidates the
-  cache instead of being handed to Eclipse as a runtime that no longer exists.
-  `has_javac` is re-stat'd too, since that is what decides whether an entry is a
-  valid Eclipse runtime at all.
-- **The jdtls jar filename is part of the key**, and it carries the version
-  (`org.eclipse.jdt.ls.core_1.60.0.202606262232.jar`), so a Mason upgrade re-reads
-  the manifest rather than trusting a stale minimum.
-- **`:JdtlsRescanJDKs` deletes the file**, then re-probes.
+> If you need several runtimes registered at once — one project on 8, another on
+> 21 — that is the capability this trade gave up. Switch `$JAVA_HOME` per
+> project instead.
 
-| | Session memo only | Plus disk cache |
-|---|---|---|
-| JDK probe | 34.8 ms | **0.2 ms** |
-| `nvim <kafka java file>` | 108 ms | **68 ms** |
-
-Verified afterwards: same launcher (Zulu 21), same `-Xmx4g`, exactly one client,
-and no new globals leaked into `_G`.
-
-> A latent bug surfaced while doing this. `:JdtlsRescanJDKs` has to reset
-> `cached_min`, but that local was declared *further down the file* than the
-> command — and a `local` declared later is not in scope for a closure defined
-> earlier, so the assignment would have silently created a **global** and never
-> cleared the real cache. It is forward-declared now, next to `cached_jdks`.
 
 ### Opening files: cold vs warm
 
@@ -200,16 +176,12 @@ Time from buffer open to each client attaching:
 
 | File | Buffer open | Clients attach at |
 |---|---|---|
-| `a.ts` | 93.7 ms | `ts_ls` @ 189 ms |
-| `App.tsx` | 135.4 ms | `emmet_language_server` @ 217 ms, `ts_ls` @ 221 ms |
-| `i.html` | 34.2 ms | `emmet_language_server` @ 132 ms, `html` @ 295 ms |
-| `s.scss` | 35.3 ms | `emmet_language_server` @ 115 ms, `cssls` @ 196 ms |
 | `m.py` | 145.2 ms | `pyright` @ 246 ms |
 | `m.cpp` | 147.2 ms | `clangd` @ 206 ms |
 
 Attach happens **after** the buffer is open and editable — it is asynchronous,
 and the editor is responsive throughout. This is why adding two servers changed
-nothing: an A/B with `emmet_language_server` and `angularls` disabled put the
+nothing: an A/B with the extra web servers disabled put the
 difference **inside the ±2 ms noise floor** on every filetype tested.
 
 > **Measurement caveat.** All of the above is `--headless`, which has no
@@ -261,7 +233,7 @@ list did not already cover (`rainbow_delimiters`), now listed by hand. See
 ### What is left
 
 Roughly irreducible: lazy.nvim parsing 48 specs (~2.8 ms), Neovim's own
-`ftplugin/lua.lua` (~2.3 ms), gitsigns attaching (~2.3 ms), catppuccin applying
+`ftplugin/lua.lua` (~2.3 ms), gitsigns attaching (~2.3 ms), the colorscheme applying
 (~2.3 ms).
 
 ---
@@ -308,14 +280,9 @@ cannot beat, so both are listed:
 | `live_grep "KafkaProducer"` → first 50 | **85 ms** | `rg` = 220 ms full scan |
 | `live_grep` → settled (606 results) | ~5 s (streaming) | |
 | Preview render, per selection move | **2.9 ms** avg, 5.2 ms worst | |
-| Neo-tree open at kafka root | **53 ms** | |
 
 Both pickers *stream* — results appear at essentially the speed of `fd`/`rg` and
 keep filling while you type, so the "settled" figures are not a wait you feel.
-
-The **53 ms** neo-tree figure is the interesting one: `follow_current_file` is on,
-so opening the tree from a file 8 directories deep expands that entire path
-(121 rows rendered) rather than just listing the root.
 
 Preview cost was re-checked after `preview_width` was raised to `0.6` (see
 [telescope.md](telescope.md)): **2.9 ms**. A wider preview costs nothing extra —
@@ -386,7 +353,7 @@ with 30 buffers open does not pay to re-scan all of them.
 | `nvim --startuptime /tmp/st.log +q && sort -k2 -rn /tmp/st.log \| head -20` | Where startup time goes. **Note `--startuptime` appends**, so delete the file between runs. |
 | `:Lazy profile` | Per-plugin load cost inside lazy.nvim |
 | `:TSStatus` | Whether treesitter is actually on for this buffer, and whether parsers conflict |
-| `:BigFileStatus` | Whether large-file protection kicked in here |
+| `:BigFile status` | Whether large-file protection kicked in here |
 | `:ConformInfo` | Which formatter runs, and whether it is installed |
 | `:checkhealth vim.lsp` | Attached servers and their root dirs |
 

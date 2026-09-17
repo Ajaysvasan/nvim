@@ -8,7 +8,6 @@ The smallest file in the config. It does four things and nothing else.
 vim.g.mapleader      = " "
 vim.g.maplocalleader = " "
 vim.g.have_nerd_font = true
-vim.g.enable_notebook = false
 
 require("ajay.options")
 require("ajay.keymaps")
@@ -25,8 +24,7 @@ require("ajay.doctor").setup()
 |---|---|---|
 | `mapleader` | `<Space>` | The most reachable key on both hands, and unused in normal mode. Every custom mapping in this config sits under it. |
 | `maplocalleader` | `<Space>` | Set to the same key deliberately — this config does not use buffer-local leader chords, so keeping them identical avoids a second mental namespace. |
-| `have_nerd_font` | `true` | Read by `icons.lua`, `neotree.lua` and lualine. Setting it `false` makes every glyph fall back to plain ASCII so a machine without a patched font degrades instead of showing tofu boxes. |
-| `enable_notebook` | `false` | Gates the entire molten + image.nvim + jupytext stack. Off by default because `image.nvim` needs the `magick` LuaRock, which makes lazy.nvim bootstrap hererocks/luarocks and compile against ImageMagick's C headers. On a fresh machine that build fails, and since those specs are non-lazy, the failure blocks startup entirely. |
+| `have_nerd_font` | `true` | Read by `icons.lua` and lualine. Setting it `false` makes every glyph fall back to plain ASCII so a machine without a patched font degrades instead of showing tofu boxes. |
 
 ## Load order and why it matters
 

@@ -37,19 +37,24 @@ take all of them down — it should cost you pretty gutter symbols, nothing more
 The warning is deferred with `vim.schedule` so it can't abort startup.
 | `virtual_text.severity` | `min = ERROR` | Only errors get inline text. Warnings and hints would otherwise cover the code you're reading; they still show in the gutter and on `<leader>ld`. |
 | `virtual_text.spacing` | `2` | |
-| `float` | `border = "rounded"`, `source = true` | Shows *which* server produced the message — essential when `eslint` and `ts_ls` disagree |
+| `float` | `border = "rounded"`, `source = true` | Shows *which* server produced the message — essential when two servers disagree |
 | `severity_sort` | `true` | The worst problem on a line wins the sign |
 | `update_in_insert` | `false` | No diagnostic churn while you're mid-word |
 
 ## Servers installed by Mason
 
-`clangd`, `pyright`, `jdtls`, `ts_ls`, `eslint`, `html`, `cssls`, `lua_ls`,
-`tailwindcss`, `angularls`, `emmet_language_server`
+`pyright`, `clangd`, `jdtls`, `gopls`, `rust_analyzer`, `lua_ls`
+
+`lua_ls` is kept even though this branch is otherwise language-minimal: without
+it, editing *this config* has no completion or diagnostics.
+
+> **`rust_analyzer` needs a Rust toolchain that is not installed here.**
+> `rustup` is on `PATH` but `cargo` and `rustc` are not, so lspconfig refuses to
+> start it with `[rust_analyzer] cargo not found.` and the server never attaches.
+> `rustup default stable` fixes it; nothing in the config needs to change.
 
 | Server | Attaches to | Note |
 |---|---|---|
-| `angularls` | `typescript`, `html`, `typescriptreact`, `htmlangular` | **Gated to real Angular workspaces**, see below |
-| `emmet_language_server` | `html`, `htmlangular`, `css`, `scss`, `less`, `javascriptreact`, `typescriptreact` | Required by [nvim-emmet](plugins.md) — `<leader>le` is inert without it |
 
 `mason-lspconfig` is configured with `automatic_enable = { exclude = { "jdtls" } }`
 — but **only when it is loaded at all**, see [Mason, on demand](#mason-on-demand).
@@ -61,7 +66,7 @@ The warning is deferred with `vim.schedule` so it can't abort startup.
 
 ## Tools installed by mason-tool-installer
 
-`prettier`, `clang-format`, `black`, `isort`, `stylua`, `google-java-format`,
+`clang-format`, `black`, `isort`, `stylua`, `google-java-format`,
 `shfmt`, `goimports`, `gofumpt`, `ruff`
 
 `goimports` + `gofumpt` are the Go pair (import-fixer, then formatter — the same
@@ -70,11 +75,8 @@ shape as `isort` + `black`). `ruff` is **not** a replacement for isort+black:
 per project, so a repo whose `pyproject.toml` declares `[tool.ruff]` gets ruff
 and everything else keeps isort+black.
 
-`eslint_d` used to be in this list and was removed. It is a daemon for
-`nvim-lint` / `null-ls`, and this config has neither: ESLint **diagnostics**
-come from the `eslint` language server above, and **fixes** from
-`LspEslintFixAll` on `BufWritePre`. It was a package to install and keep
-updated that could never affect the editor.
+`prettier` and `eslint_d` used to be in this list. Both are gone with the web
+stack — there is no filetype left that routes to either.
 
 | Setting | Value | Why |
 |---|---|---|
@@ -125,7 +127,7 @@ It does **not** work for any Node-based server. nvim-lspconfig gives those a
 
 ```lua
 cmd = function(dispatchers, config)
-  local cmd = 'typescript-language-server'
+  local cmd = 'jdtls'
   if (config or {}).root_dir then
     local local_cmd = vim.fs.joinpath(config.root_dir, 'node_modules/.bin', cmd)
     if vim.fn.executable(local_cmd) == 1 then cmd = local_cmd end
@@ -139,11 +141,14 @@ There is no `cmd[1]` to read, and calling the function to find out would
 the loop skipped those servers — it neither enabled them nor marked anything
 missing, so mason never loaded to fix it either.
 
-The result was that **`ts_ls`, `eslint`, `html`, `cssls` and `tailwindcss` were
-never started at all**: no completion, no diagnostics, no go-to-definition in
-any TypeScript, JavaScript, HTML or CSS buffer. Python, C++ and Lua kept
-working, because their `cmd` *is* a table — which is exactly why it never
-looked broken.
+The result was that **every server whose Mason binary is not named after its
+lspconfig key never started at all**: no completion, no diagnostics, no
+go-to-definition in those buffers. Python, C++ and Lua kept working, because
+their `cmd` *is* a table — which is exactly why it never looked broken.
+
+On this branch `jdtls` is the only server left in that category, but the guard
+stays: the failure mode is silent, and the next server added could reintroduce
+it.
 
 The fix is a `fallback_bin` map naming the global binary each of those closures
 falls back to, plus a startup warning listing any server in `ensure_servers`
@@ -152,12 +157,6 @@ silent again** — that is what the warning is for.
 
 ```lua
 local fallback_bin = {
-  ts_ls = "typescript-language-server",
-  eslint = "vscode-eslint-language-server",
-  html = "vscode-html-language-server",
-  cssls = "vscode-css-language-server",
-  tailwindcss = "tailwindcss-language-server",
-  angularls = "ngserver",
   jdtls = "jdtls",
 }
 ```
@@ -212,41 +211,6 @@ errors in files you haven't opened still surface.
 line of this config is an "undefined global" error), workspace library pointed at
 Neovim's runtime files for completion on the `vim.*` API, `checkThirdParty = false`
 to stop the "configure workspace?" prompt, telemetry off.
-
-### tailwindcss
-`classAttributes` extended to `class`, `className`, `classList`, `ngClass`, plus
-the full lint rule set (conflicting classes, invalid `@apply`, variant order).
-
-### angularls — `root_markers` is not a gate
-
-This is the one override that exists to *stop* a server, not configure it.
-
-angularls ships `root_markers = { "angular.json", "nx.json" }`, which reads like
-"only start inside an Angular workspace". It isn't. When no marker matches,
-`vim.lsp` leaves `root_dir` **nil and starts the server anyway** in single-file
-mode — so a plain React or Node project was spawning an `ngserver` process for
-every `.ts`, `.tsx` and `.html` buffer opened.
-
-A `root_dir` **function** is the actual gate. The client starts only if
-`on_dir()` is called, so returning without calling it means *"not an Angular
-workspace, do not start"*:
-
-```lua
-vim.lsp.config("angularls", {
-  root_dir = function(bufnr, on_dir)
-    local fname = vim.api.nvim_buf_get_name(bufnr)
-    local start = fname ~= "" and fname or vim.fn.getcwd()
-    local root = vim.fs.root(start, { "angular.json", "nx.json" })
-    if root then
-      on_dir(root)
-    end
-  end,
-})
-```
-
-Verified both directions: angularls attaches in a project with `angular.json`
-and stays out of one without it. **Reach for this pattern for any server whose
-`filetypes` are broader than the projects it belongs in.**
 
 ## The shared `LspAttach` autocmd
 
@@ -310,7 +274,7 @@ better than unmapping later: with no buffer-local `gd`, the key falls back to
 Vim's own *go to local declaration*, which is useful in a huge file and costs
 nothing. Same shape as the guard in `start_jdtls()` ([jdtls.md](jdtls.md)).
 
-`:BigFileOff` re-attaches the server, which fires `LspAttach` again, so the
+`:BigFile` re-attaches the server, which fires `LspAttach` again, so the
 keymaps come back with it.
 
 > Neovim's **own** buffer-local `K` (`vim.lsp.buf.hover()`) is still mapped on
@@ -382,13 +346,6 @@ broken plugin install degrades rather than leaving `gr` dead.
 | `<leader>cl` | Run the code lens under the cursor |
 
 ## Per-client behaviour
-
-**`ts_ls` formatting is disabled** (`documentFormattingProvider = false`).
-[conform](conform.md) + prettier owns JS/TS formatting; two formatters fighting
-over the same buffer produces churn on every save.
-
-**`eslint` auto-fixes on save** via a buffer-local `BufWritePre` autocmd calling
-`LspEslintFixAll`, wrapped in `pcall`.
 
 **Inlay hints** are enabled for any server that supports
 `textDocument/inlayHint`, using the colon call form required on 0.11+.

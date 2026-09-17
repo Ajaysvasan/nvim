@@ -74,7 +74,11 @@ end, { desc = "Run CMake target" })
 --   <leader>f*        -> lua/ajay/telescope.lua
 --   <leader>ca, gd, K,
 --   <leader>rn,
---   <leader>x{d,q}    -> lua/ajay/lsp.lua (LspAttach, buffer-local)
+--   <leader>l{d,q}    -> lua/ajay/lsp.lua (LspAttach, buffer-local)
 --   <leader>d*, <F5>+ -> lua/ajay/dap.lua
---   <C-n>             -> lua/ajay/neotree.lua
 --   <leader>lf        -> lua/ajay/conform.lua
+--
+-- Gone entirely on this branch: <C-n> (neo-tree), <leader>g{g,f,C,l,L}
+-- (lazygit), <leader>m* and ]j/[j/]o/[o (jupyter), <leader>jN
+-- (java-creator), <leader>s* (spring boot), <leader>le (emmet).
+-- `:Ex` opens netrw for directory browsing.

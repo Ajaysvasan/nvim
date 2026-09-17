@@ -63,24 +63,45 @@ local function notify_once(key, msg, level)
 end
 
 -- JDK discovery ----------------------------------------------------
-
--- BUG FIX (mine): the first version of this only looked at Homebrew's
--- openjdk@N formula paths plus a glob over /Library/Java/JavaVirtualMachines
--- with a fragile version regex. That silently misses:
---   * Azul Zulu, Temurin, Corretto, GraalVM, Microsoft builds
---   * SDKMAN, jenv, asdf and mise installs (all outside /Library)
---   * anything whose directory name doesn't match my regex
--- Switching your runtime from Homebrew OpenJDK to Zulu was enough to make
--- the detection blind, which is why it reported "Found Java 17" from the
--- PATH fallback instead of finding your 21.
 --
--- The authoritative source on macOS is /usr/libexec/java_home. It knows
--- about every properly installed JDK regardless of vendor.
+-- SIMPLIFIED on the minimal branch: $JAVA_HOME is the source of truth.
 --
--- Escape hatch: set vim.g.jdtls_java_home to a JDK home path in
--- options.lua and everything below is skipped.
+-- This used to enumerate every JDK on the machine (java_home -V, a
+-- `java -version` spawn per candidate, Homebrew and SDKMAN globs), cache
+-- the result to disk keyed on the jdtls jar name, and read the server's
+-- OSGi manifest to discover its minimum version. All of that existed to
+-- answer one question -- "which JVM runs jdtls?" -- and it is not the
+-- question you actually care about.
+--
+-- What you care about is which JDK your PROJECT uses, and $JAVA_HOME
+-- already says that. So:
+--
+--   * $JAVA_HOME is the project runtime, handed to Eclipse as
+--     `java.configuration.runtimes`. Change it in your shell, restart
+--     Neovim, done.
+--
+--   * jdtls itself needs JDK 21+ to RUN. That is a hard requirement of
+--     the server (its manifest declares
+--     `osgi.ee=JavaSE, version=21`), not a preference -- on an older JVM
+--     the launcher dies inside OSGi bundle activation and you get
+--     "exit code 13" with nothing useful in lsp.log.
+--
+-- So we use $JAVA_HOME when it is new enough, and otherwise fall back to
+-- the newest JDK `/usr/libexec/java_home` reports -- ONE subprocess, no
+-- caching, no per-JDK probing. Running the server on a different JVM
+-- from the one your project targets is normal and supported; that is
+-- exactly what the `runtimes` table is for.
+--
+-- Escape hatch: vim.g.jdtls_java_home overrides both.
 
-local SEARCH_VERSIONS = { 25, 24, 23, 22, 21, 17, 11, 8 }
+-- jdtls's own requirement. Bump only if the server does.
+local JDTLS_MIN_JAVA = 21
+
+-- Eclipse only recognises execution environments it ships definitions
+-- for. Handing it a "JavaSE-26" it has never heard of makes it log a
+-- config error and ignore the whole runtimes block. Raise when jdtls
+-- gains support for a newer release.
+local MAX_EE = 25
 
 local function trim(x)
   return (x:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -93,461 +114,140 @@ local function probe_version(home)
   end
   -- `java -version` writes to stderr, hence 2>&1.
   local out = vim.fn.system(vim.fn.shellescape(bin) .. " -version 2>&1")
-  -- Handles both "1.8.0_402" and "21.0.3"
-  local major = out:match('version "1%.(%d+)') or out:match('version "(%d+)')
-  return tonumber(major)
+  -- Handles both "1.8.0_402" and "21.0.3".
+  return tonumber(out:match('version "1%.(%d+)') or out:match('version "(%d+)'))
 end
 
--- MEMOISED, and it has to be. This function shells out: one
--- `/usr/libexec/java_home -V`, plus a `java -version` per candidate whose
--- version cannot be read any other way. On this machine a single call was
--- 1 java_home + 2 java spawns, and `java -version` costs ~150 ms because it
--- boots a JVM to print one line.
---
--- It is called from detect_runtimes(), launcher_java() and :AjayDoctor, so an
--- uncached version ran the whole probe FOUR times per Java buffer opened --
--- 13 subprocesses, ~760 ms of blocking work before the file was editable, and
--- all four passes returned exactly the same answer.
---
--- The set of installed JDKs does not change while Neovim is running. Cache it
--- for the session; :JdtlsRescanJDKs busts it after installing a new JDK.
-local cached_jdks = nil
+-- Session memo. `probe_version` boots a JVM (~100 ms), and both
+-- detect_runtimes() and launcher_java() need the answer -- uncached that is
+-- ~120 ms of JVM spawns per Java buffer, all of it returning the same thing.
+-- $JAVA_HOME cannot change inside a running Neovim, so one lookup is enough.
+-- No disk cache and no :Rescan command: this is cheap enough not to need them.
+local memo = {}
 
--- Forward-declared HERE, not at its use site further down, because
--- :JdtlsRescanJDKs (defined above jdtls_required_java) has to reset it.
--- A `local` declared later in the file is not in scope for a closure
--- defined earlier -- the assignment would silently create a GLOBAL and
--- the real cache would never be cleared. Same trap the forward
--- declarations for open_type_stage/open_dir_stage guard against.
-local cached_min = nil
-
--- ── DISK CACHE ────────────────────────────────────────────────────
---
--- MEASURED against kafka: the in-session memo above is not enough, because
--- the scan still runs ONCE PER SESSION, on the first Java file you open,
--- and it is all blocking subprocess work:
---
---   /usr/libexec/java_home -V   41 ms
---   unzip -p <jdt core jar>     17 ms   (jdtls_required_java, below)
---   java -version               48 ms   each, per JDK it cannot read
---
--- That is why opening the FIRST Java file measured 100 ms while every
--- one after it measured 7 ms. The set of installed JDKs changes when you
--- install a JDK -- roughly never -- so paying it every session is pure
--- waste.
---
--- Persisted to stdpath("cache"). Invalidation is the whole game:
---
---   * every cached JDK path is re-checked with executable(), an fs stat,
---     not a subprocess -- microseconds. A JDK you deleted or moved
---     invalidates the cache immediately rather than being handed to
---     Eclipse as a runtime that no longer exists.
---   * the jdtls jar FILENAME is part of the key, and it carries the
---     version (org.eclipse.jdt.ls.core_1.60.0...jar), so a Mason upgrade
---     re-reads the manifest instead of trusting a stale minimum.
---   * :JdtlsRescanJDKs deletes the file outright.
-local cache_file = vim.fn.stdpath("cache") .. "/ajay-jdtls-probe.json"
-
-local function read_cache()
-  local f = io.open(cache_file, "r")
-  if not f then
-    return nil
+--- The JDK $JAVA_HOME points at, or nil.
+--- @return string|nil home, number|nil version
+local function java_home_jdk()
+  if memo.jh ~= nil then
+    return memo.jh[1], memo.jh[2]
   end
-  local raw = f:read("*a")
-  f:close()
-  local ok, data = pcall(vim.json.decode, raw)
-  if not ok or type(data) ~= "table" then
-    return nil
+  local home = vim.g.jdtls_java_home and vim.fn.expand(vim.g.jdtls_java_home) or vim.env.JAVA_HOME
+  if not home or home == "" or vim.fn.isdirectory(home) ~= 1 then
+    memo.jh = {}
+    return nil, nil
   end
-  return data
+  home = home:gsub("/$", "")
+  memo.jh = { home, probe_version(home) }
+  return memo.jh[1], memo.jh[2]
 end
 
-local function write_cache(tbl)
-  local ok, raw = pcall(vim.json.encode, tbl)
-  if not ok then
-    return
+--- A JDK that can run jdtls, or nil. Only called when $JAVA_HOME can't.
+---
+--- Asks macOS rather than globbing: `java_home -v 21` returns exactly the
+--- 21.x JDK, and `-v 21+` returns the NEWEST at or above 21.
+---
+--- We try the exact version first on purpose. jdtls is built against one
+--- LTS, and Eclipse's OSGi runtime can refuse a JVM newer than it knows
+--- about -- which surfaces as "exit code 13" with a clean-looking stderr,
+--- because the real error happens during bundle activation and only ever
+--- lands in the workspace .metadata/.log. Measured on this machine: Java
+--- 17 cannot boot it, 21 and 26 both can. 26 working today is luck, not a
+--- guarantee, so prefer the version jdtls actually targets.
+--- @return string|nil home, number|nil version
+local function newest_supported_jdk()
+  if vim.fn.executable("/usr/libexec/java_home") ~= 1 then
+    return nil, nil
   end
-  local f = io.open(cache_file, "w")
-  if not f then
-    return
+  if memo.alt ~= nil then
+    return memo.alt[1], memo.alt[2]
   end
-  f:write(raw)
-  f:close()
+  for _, want in ipairs({ tostring(JDTLS_MIN_JAVA), JDTLS_MIN_JAVA .. "+" }) do
+    local home = trim(vim.fn.system({ "/usr/libexec/java_home", "-v", want }))
+    if vim.v.shell_error == 0 and home ~= "" and vim.fn.isdirectory(home) == 1 then
+      memo.alt = { home, probe_version(home) }
+      return memo.alt[1], memo.alt[2]
+    end
+  end
+  memo.alt = {}
+  return nil, nil
 end
 
-local function java_home_candidates()
-  if cached_jdks then
-    return cached_jdks
-  end
-
-  -- Disk cache, revalidated. Each entry is {version, path, has_javac};
-  -- json round-trips those as string keys, hence the rebuild below.
-  local disk = read_cache()
-  if disk and type(disk.jdks) == "table" and #disk.jdks > 0 then
-    local restored, stale = {}, false
-    for _, e in ipairs(disk.jdks) do
-      local ver, path, has_javac = e[1], e[2], e[3]
-      if type(path) ~= "string" or vim.fn.executable(path .. "/bin/java") ~= 1 then
-        stale = true
-        break
-      end
-      -- has_javac is re-stat'd too: a JRE that gained a compiler (or a
-      -- JDK that lost one) changes whether it is a valid Eclipse runtime.
-      table.insert(restored, { ver, path, vim.fn.executable(path .. "/bin/javac") == 1 })
-    end
-    if not stale then
-      cached_jdks = restored
-      return cached_jdks
-    end
-  end
-
-  local c = {}
-  local seen = {}
-
-  local function add(ver, home)
-    if not home or home == "" then
-      return
-    end
-    if vim.fn.executable(home .. "/bin/java") ~= 1 then
-      return
-    end
-
-    -- Dedupe on the RESOLVED path, not the literal one. On a Linux distro
-    -- /usr/lib/jvm is mostly symlinks: here 16 entries -- java, java-21,
-    -- java-21-openjdk, java-openjdk, jre, jre-21, jre-21-openjdk, ... --
-    -- resolve to just 3 real JDKs. Keying on the literal path counted each
-    -- alias separately, so the same JDK was probe_version()'d up to five
-    -- times (a JVM spawn each) and :JdtlsRescanJDKs printed 16 lines of
-    -- mostly the same thing.
-    local real = (vim.uv or vim.loop).fs_realpath(home) or home
-    if seen[real] then
-      return
-    end
-    seen[real] = true
-
-    -- JDK or JRE? `bin/java` alone does not tell you: a headless JRE has
-    -- it too. It matters because detect_runtimes() below feeds these to
-    -- Eclipse as `java.configuration.runtimes`, and Eclipse needs a JDK
-    -- there -- a JRE has no compiler and no src.zip, so a project pinned
-    -- to that release gets unresolved JDK symbols and no source
-    -- navigation into the standard library.
-    --
-    -- This is not hypothetical on Fedora: java-25-openjdk, jre-25,
-    -- jre-25-openjdk and jre-openjdk are ALL javac-less here, so 25 had
-    -- no JDK at all and the runtime entry pointed at a JRE.
-    local has_javac = vim.fn.executable(home .. "/bin/javac") == 1
-
-    -- Store the RESOLVED path, not the alias that happened to be globbed
-    -- first. Otherwise the winner of the dedupe is an arbitrary symlink
-    -- name, and reports read absurdly: /usr/lib/jvm/java-25 is a symlink
-    -- to java-latest-openjdk, so it shows as "ver=26 java-25".
-    --
-    -- Trust the binary over the directory name. Vendor dir naming is not
-    -- something to parse: zulu-21.jdk, temurin-21.jdk, jdk-21.0.3+9,
-    -- graalvm-community-openjdk-21... all differ.
-    table.insert(c, { ver or probe_version(real) or 0, real, has_javac })
-  end
-
-  -- Explicit override always wins.
-  if vim.g.jdtls_java_home then
-    add(nil, vim.fn.expand(vim.g.jdtls_java_home))
-  end
-
-  if vim.fn.has("mac") == 1 then
-    -- Enumerate with -V rather than probing `-v <N>` for a hardcoded list
-    -- of versions. My previous attempt asked only about 8/11/17/21..25,
-    -- so a JDK 26 install was invisible to it. Parsing the full listing
-    -- means new Java releases need no code change here.
-    -- NOTE: -V writes to stderr, hence the 2>&1.
-    if vim.fn.executable("/usr/libexec/java_home") == 1 then
-      local listing = vim.fn.system("/usr/libexec/java_home -V 2>&1")
-      for line in vim.gsplit(listing, "\n", { trimempty = true }) do
-        local ver, home = line:match("^%s*([%d][%d%._]*)%s.*%s(/.+)$")
-        if ver and home then
-          -- BUG FIX: was "^1%%.(%d+)" -- "%%" is a literal '%' in a Lua
-          -- pattern, so that matched "1", a literal '%', ANY char, then
-          -- digits. Since java_home -V never prints a '%', this never
-          -- matched, and the "^(%d+)" fallback took over -- capturing
-          -- just the leading "1" from old-style "1.8.0_442" version
-          -- strings. Every JDK 8 found this way (Oracle/Adoptium .pkg
-          -- installs, not Homebrew) was tagged version 1, which
-          -- detect_runtimes()'s `ver >= 8` check then silently dropped.
-          -- One escaped dot, not an escaped percent: "%." matches a
-          -- literal '.', same as probe_version() above already does.
-          local major = ver:match("^1%.(%d+)") or ver:match("^(%d+)")
-          add(tonumber(major), home)
-        end
-      end
-    end
-    -- Homebrew formula installs are NOT bundles and java_home misses them.
-    for _, v in ipairs(SEARCH_VERSIONS) do
-      add(v, ("/opt/homebrew/opt/openjdk@%d/libexec/openjdk.jdk/Contents/Home"):format(v))
-      add(v, ("/usr/local/opt/openjdk@%d/libexec/openjdk.jdk/Contents/Home"):format(v))
-    end
-    add(nil, "/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home")
-    for _, dir in ipairs(vim.fn.glob("/Library/Java/JavaVirtualMachines/*/Contents/Home", true, true)) do
-      add(nil, dir)
-    end
-  else
-    for _, dir in ipairs(vim.fn.glob("/usr/lib/jvm/*", true, true)) do
-      add(nil, dir)
-    end
-  end
-
-  -- Version managers, both platforms. These live in $HOME and are
-  -- invisible to java_home and to any /usr or /Library glob.
-  local vm_globs = {
-    "~/.sdkman/candidates/java/*",
-    "~/.jenv/versions/*",
-    "~/.asdf/installs/java/*",
-    "~/.local/share/mise/installs/java/*",
-  }
-  for _, g in ipairs(vm_globs) do
-    for _, dir in ipairs(vim.fn.glob(vim.fn.expand(g), true, true)) do
-      add(nil, dir)
-      -- SDKMAN on macOS sometimes nests the bundle layout.
-      add(nil, dir .. "/Contents/Home")
-    end
-  end
-
-  -- Whatever JAVA_HOME points at, last.
-  if vim.env.JAVA_HOME then
-    add(nil, vim.env.JAVA_HOME)
-  end
-
-  cached_jdks = c
-  -- Persist so the next session skips the whole probe. Merged into
-  -- whatever jdtls_required_java() already wrote rather than replacing
-  -- it -- the two share one file and are populated at different times.
-  local existing = read_cache() or {}
-  existing.jdks = c
-  write_cache(existing)
-  return c
-end
-
--- Exposed so :AjayDoctor can show exactly what was found.
-M.detected_jdks = java_home_candidates
-
--- Drop the cache above. Needed only after installing or removing a JDK
--- mid-session -- otherwise the scan result is stable for the whole session.
-vim.api.nvim_create_user_command("JdtlsRescanJDKs", function()
-  cached_jdks = nil
-  cached_min = nil
-  -- Must delete the DISK cache too, or this command re-reads the very
-  -- file it is meant to invalidate and reports the stale answer back.
-  vim.fn.delete(cache_file)
-  local found = java_home_candidates()
-  local lines = {}
-  for _, e in ipairs(found) do
-    -- JDK vs JRE is shown because only a JDK can serve as an Eclipse
-    -- runtime. A version that lists only JRE here is a version your
-    -- projects cannot compile against, however many entries it has.
-    table.insert(lines, ("  %-4s %-4s %s"):format(e[1], e[3] and "JDK" or "JRE", e[2]))
-  end
-  vim.notify(
-    ("Rescanned. %d JVM%s found (unique real paths):\n%s"):format(
-      #found,
-      #found == 1 and "" or "s",
-      table.concat(lines, "\n")
-    ),
-    vim.log.levels.INFO,
-    { title = "jdtls" }
-  )
-end, { desc = "Re-scan installed JDKs (after installing a new one)" })
-
--- Every JDK we can find, as jdtls `runtimes` entries. This is what lets
--- you run jdtls on 21 while a project still compiles against 17.
--- Eclipse only recognises execution environments it ships definitions
--- for. Handing jdtls a "JavaSE-26" it has never heard of makes it log a
--- config error and ignore the whole runtimes block -- including the
--- entries that WERE valid. Capped accordingly; raise MAX_EE when jdtls
--- gains support for a newer release.
-local MAX_EE = 25
-
+--- `runtimes` for jdtls: what your PROJECT compiles against.
+--- Just $JAVA_HOME -- one entry, because one is what you set.
 local function detect_runtimes()
-  local seen, runtimes = {}, {}
-  for _, entry in ipairs(java_home_candidates()) do
-    local ver, path, has_javac = entry[1], entry[2], entry[3]
-    -- has_javac is the important condition: a JRE is not a valid Eclipse
-    -- runtime. Without this check the FIRST candidate for a version won,
-    -- JRE or not, purely on glob order -- which on this machine handed
-    -- JavaSE-25 a compiler-less /usr/lib/jvm/java-25-openjdk.
-    if ver and ver >= 8 and ver <= MAX_EE and has_javac and vim.fn.isdirectory(path) == 1 and not seen[ver] then
-      seen[ver] = true
-      table.insert(runtimes, {
-        name = ver <= 8 and "JavaSE-1.8" or ("JavaSE-" .. ver),
-        path = path,
-      })
-    end
+  local home, ver = java_home_jdk()
+  -- A JRE is not a valid Eclipse runtime; it needs javac.
+  if not (home and ver and ver >= 8 and ver <= MAX_EE) then
+    return {}
   end
-  return runtimes
+  if vim.fn.executable(home .. "/bin/javac") ~= 1 then
+    return {}
+  end
+  return { {
+    name = ver <= 8 and "JavaSE-1.8" or ("JavaSE-" .. ver),
+    path = home,
+  } }
 end
 
--- The JDK that RUNS jdtls.
---
--- BUG FIX (mine): the first version of this picked the HIGHEST JDK >= 21
--- it could find. That's wrong. Eclipse JDT LS is built against a specific
--- LTS and its OSGi runtime rejects JVMs newer than it supports -- the
--- launcher then aborts with exit code 13 before any LSP traffic happens.
--- If you have JDK 24/25 installed, "highest wins" hands jdtls a JVM it
--- refuses to run on.
---
--- Preference order is now: 21 (the LTS jdtls targets), then 23, 22, then
--- newer only as a last resort. Your PROJECT's Java version is unaffected
--- by this -- that's driven by `runtimes` below.
--- Ask the INSTALLED jdtls what it needs, instead of hardcoding a version
--- list that goes stale every six months.
---
--- Every OSGi bundle declares its minimum execution environment in its
--- MANIFEST.MF, either as Bundle-RequiredExecutionEnvironment or as an
--- osgi.ee Require-Capability filter. Reading it from the jar means that
--- when Mason upgrades jdtls and the requirement moves from 21 to 25,
--- this picks that up with no edit here.
-local FALLBACK_MIN = 21
--- cached_min is forward-declared near cached_jdks at the top of this file
--- so :JdtlsRescanJDKs can reset it -- see the note there.
-
-local function jdtls_required_java()
-  if cached_min then
-    return cached_min
-  end
-  cached_min = FALLBACK_MIN
-
-  local jar = vim.fn.glob(mason_root .. "/jdtls/plugins/org.eclipse.jdt.ls.core_*.jar", true, true)[1]
-  if not jar or vim.fn.executable("unzip") ~= 1 then
-    return cached_min
-  end
-
-  -- Disk cache, keyed on the jar's FILENAME -- which carries the version
-  -- (org.eclipse.jdt.ls.core_1.60.0.202606262232.jar), so a Mason upgrade
-  -- changes the key and the manifest is re-read automatically. Saves the
-  -- 17 ms `unzip` spawn on the first Java file of every session.
-  local jar_key = vim.fn.fnamemodify(jar, ":t")
-  local disk = read_cache()
-  if disk and disk.jar == jar_key and type(disk.min_java) == "number" then
-    cached_min = disk.min_java
-    return cached_min
-  end
-
-  local mf = vim.fn.system({ "unzip", "-p", jar, "META-INF/MANIFEST.MF" })
-  if vim.v.shell_error ~= 0 then
-    return cached_min
-  end
-
-  -- MANIFEST.MF wraps at 72 bytes and continues lines with a single
-  -- leading space. Unfold before matching or the version can be split
-  -- across two lines.
-  mf = mf:gsub("\r\n", "\n"):gsub("\n ", "")
-
-  local ee = mf:match("Bundle%-RequiredExecutionEnvironment:%s*JavaSE%-([%d%.]+)")
-    -- Same "%%." typo as above -- "%." is a literal dot, "%%." is a
-    -- literal '%' followed by any char, which "osgi.ee=..." never has.
-    or mf:match("osgi%.ee=JavaSE.-version=([%d%.]+)")
-
-  if ee then
-    local major = ee:match("^1%.(%d+)") or ee:match("^(%d+)")
-    if tonumber(major) then
-      cached_min = tonumber(major)
-    end
-  end
-
-  local existing = read_cache() or {}
-  existing.jar = jar_key
-  existing.min_java = cached_min
-  write_cache(existing)
-  return cached_min
-end
-
+--- The `java` binary that RUNS jdtls. Must be >= JDTLS_MIN_JAVA.
+--- @return string|nil
 local function launcher_java()
-  local min = jdtls_required_java()
+  local home, ver = java_home_jdk()
 
-  local by_version = {}
-  for _, entry in ipairs(java_home_candidates()) do
-    local ver, path = entry[1], entry[2]
-    if ver and ver > 0 and not by_version[ver] and vim.fn.executable(path .. "/bin/java") == 1 then
-      by_version[ver] = path .. "/bin/java"
-    end
+  if home and ver and ver >= JDTLS_MIN_JAVA then
+    return home .. "/bin/java"
   end
 
-  -- Lowest version at or above the declared minimum. Closest to what
-  -- jdtls was actually built and tested against; picking the newest JDK
-  -- on the machine is how you end up on a release whose OSGi runtime
-  -- jdtls refuses to boot on (exit code 13, clean-looking stderr).
-  local usable = {}
-  for ver in pairs(by_version) do
-    if ver >= min then
-      table.insert(usable, ver)
-    end
+  -- $JAVA_HOME is unset, or too old to run the server. Fall back.
+  --
+  -- SILENT on purpose. This used to announce the split on every session
+  -- ("$JAVA_HOME is Java 17, but jdtls needs 21+..."), which is noise: on a
+  -- machine whose JAVA_HOME is an older LTS the condition is permanent and
+  -- correct, so the message reported normal operation forever. Only genuine
+  -- failures below get a notification.
+  --
+  -- To see which JVM was chosen: :AjayDoctor, or
+  --   :lua vim.print(require("ajay.jdtls").detected_jdks())
+  local alt, alt_ver = newest_supported_jdk()
+  if alt and alt_ver then
+    return alt .. "/bin/java"
   end
-  table.sort(usable)
 
-  if #usable > 0 then
-    local ver = usable[1]
-    -- More than two releases past the minimum is worth flagging: jdtls
-    -- almost certainly predates it.
-    if ver > min + 2 then
-      notify_once(
-        "untested-jdk",
-        table.concat({
-          ("Running jdtls on Java %d, but it only requires %d."):format(ver, min),
-          "",
-          "No closer version is installed. jdtls may refuse to boot on a",
-          "release this new -- that shows up as 'exit code 13' with",
-          "nothing useful in lsp.log.",
-          "",
-          ("If Java breaks, install %d alongside what you have:"):format(min),
-          ("  brew install --cask zulu@%d"):format(min),
-          "",
-          "They coexist fine; your default `java` is unaffected.",
-        }, "\n"),
-        vim.log.levels.WARN
-      )
-    end
-    return by_version[ver]
-  end
-  -- No JDK 21+ anywhere. Do NOT fall back to `java` on PATH and let the
-  -- server die -- that produces "exit code 13" with a clean-looking
-  -- stderr, because the real UnsupportedClassVersionError happens inside
-  -- OSGi bundle activation and only lands in the workspace .metadata/.log.
-  -- Fail here with something you can act on instead.
-  if vim.fn.executable("java") == 1 then
-    local out = vim.fn.system({ "java", "-version" })
-    local major = tonumber(out:match('version "(%d+)'))
-    if major and major < jdtls_required_java() then
-      -- NOTE: :format() only applies to the string literal it is called
-      -- on. The previous version chained `.. "...%d..."` AFTER the
-      -- format call, so that second %d was never substituted and printed
-      -- literally. Build the whole message first, then format once.
-      local min = jdtls_required_java()
-      local lines = {
-        ("jdtls needs JDK %d+ to run. `java` on PATH is %d."):format(min, major),
-        "",
-        "JDKs I could find on this machine:",
-      }
-      local found = java_home_candidates()
-      if #found == 0 then
-        table.insert(lines, "  (none)")
-      end
-      for _, entry in ipairs(found) do
-        table.insert(lines, ("  Java %-3s  %s"):format(entry[1] > 0 and entry[1] or "?", entry[2]))
-      end
-      vim.list_extend(lines, {
-        "",
-        ("Your project can still target %d -- this is only the JVM"):format(major),
-        "that runs the language server.",
-        "",
-        ("  brew install --cask zulu@%d     (or: brew install openjdk@%d)"):format(min, min),
-        "",
-        "Already have a new enough JDK that isn't listed? Point at it directly:",
-        ('  vim.g.jdtls_java_home = "/path/to/jdk-%d/Contents/Home"'):format(min),
-        "",
-        "Run :AjayDoctor for the full list.",
-      })
-      notify_once("wrong-jdk", table.concat(lines, "\n"), vim.log.levels.ERROR)
-      return nil
-    end
-  end
+  -- Nothing usable anywhere. Fail with something actionable rather than
+  -- letting the launcher die with a clean-looking "exit code 13".
+  notify_once(
+    "no-jdk",
+    table.concat({
+      ("jdtls needs JDK %d+ to run, and none was found."):format(JDTLS_MIN_JAVA),
+      "",
+      home and ("$JAVA_HOME = " .. home .. (ver and (" (Java %d)"):format(ver) or " (version unreadable)"))
+        or "$JAVA_HOME is not set.",
+      "",
+      ("  brew install --cask zulu@%d"):format(JDTLS_MIN_JAVA),
+      "",
+      "Or point at one directly:",
+      '  vim.g.jdtls_java_home = "/path/to/jdk/Contents/Home"',
+    }, "\n"),
+    vim.log.levels.ERROR
+  )
   return nil
+end
+
+--- Every JDK this module knows about. Used by :AjayDoctor.
+--- @return table[] list of { version, path, is_launcher }
+function M.detected_jdks()
+  local out = {}
+  local home, ver = java_home_jdk()
+  if home then
+    table.insert(out, { ver or 0, home, ver ~= nil and ver >= JDTLS_MIN_JAVA })
+  end
+  if not (ver and ver >= JDTLS_MIN_JAVA) then
+    local alt, alt_ver = newest_supported_jdk()
+    if alt and alt ~= home then
+      table.insert(out, { alt_ver or 0, alt, true })
+    end
+  end
+  return out
 end
 
 -- Decode the JDK major version from the incubator-module warning jdtls
@@ -629,9 +329,18 @@ local function start_jdtls(bufnr)
   -- GB of RAM, no forward progress, workspace unusable until wiped
   -- (:JdtlsWipeWorkspace).
   --
-  -- Skip starting jdtls at all for a bigfile buffer, before any of that
-  -- can happen, instead of starting it and cleaning up after.
-  if vim.b[bufnr].bigfile then
+  -- Skip starting jdtls at all when the buffer will be detached, before
+  -- any of that can happen, instead of starting it and cleaning up after.
+  --
+  -- Gated on `bigfile_no_lsp`, not `bigfile`. The failure above is caused
+  -- entirely by the DETACH: a client that is detached-but-not-stopped is
+  -- invisible to nvim-jdtls's reuse check. A merely large Java file now
+  -- keeps its server (bigfile.lua only detaches past lsp_max_bytes, or on a
+  -- pathological single-line file), so nothing detaches, no second server
+  -- is ever spawned, and the whole failure mode cannot arise. When the flag
+  -- IS set the detach does happen -- which is precisely when this guard
+  -- needs to fire.
+  if vim.b[bufnr].bigfile_no_lsp then
     return
   end
 
@@ -759,16 +468,12 @@ local function start_jdtls(bufnr)
   local lombok = find_lombok()
   if lombok then
     table.insert(cmd, "-javaagent:" .. lombok)
-  else
-    notify_once(
-      "no-lombok",
-      "Lombok jar not found. If this project uses @Data/@Getter, jdtls will\n"
-        .. "report 'cannot find symbol' for generated methods even though Maven builds.\n"
-        .. "Fix: mkdir -p ~/.local/share/lombok && curl -L -o ~/.local/share/lombok/lombok.jar \\\n"
-        .. "     https://projectlombok.org/downloads/lombok.jar",
-      vim.log.levels.WARN
-    )
   end
+  -- No warning when it is missing. Opening a file should not lecture you
+  -- about a jar you may not need: without Lombok, a project that uses
+  -- @Data/@Getter reports "cannot find symbol" on the generated methods --
+  -- which is a visible diagnostic in the buffer, not a silent failure. If
+  -- you hit that, :AjayDoctor and docs/jdtls.md have the one-line fix.
 
   vim.list_extend(cmd, {
     "-jar",
@@ -793,6 +498,40 @@ local function start_jdtls(bufnr)
     root_dir = root_dir,
     capabilities = capabilities,
     flags = { allow_incremental_sync = true },
+
+    -- SILENCE THE STARTUP CHATTER.
+    --
+    -- nvim-jdtls ships a default `language/status` handler (setup.lua, the
+    -- `status_callback` local) that does a raw
+    --
+    --   :echohl Function | echo "<message>" | echohl None
+    --
+    -- for every status notification jdtls sends -- "Init...", "OK",
+    -- "Ready", "ServiceReady", plus a "Starting Java Language Server"
+    -- repeat. That is 6-8 lines flashing past on every Java file, reporting
+    -- nothing you can act on.
+    --
+    -- setup.lua does `config.handlers["language/status"] or status_callback`,
+    -- so supplying our own REPLACES the noisy default. The important part is
+    -- that nvim-jdtls wraps whatever we pass: its own ServiceReady logic
+    -- (fetching org.eclipse.jdt.ls.core.sourcePaths) lives in the wrapper,
+    -- outside this handler, so silencing the echo does not disable it.
+    --
+    -- Errors still surface: real failures come through window/showMessage
+    -- and the diagnostics pipeline, not through language/status.
+    handlers = {
+      ["language/status"] = function(_, result)
+        -- Record it for :JdtlsLog-style debugging without drawing anything.
+        if vim.g.jdtls_debug and result then
+          vim.notify(
+            ("[jdtls status] %s: %s"):format(tostring(result.type), tostring(result.message)),
+            vim.log.levels.DEBUG,
+            { title = "jdtls" }
+          )
+        end
+      end,
+    },
+
     init_options = {
       bundles = collect_bundles(),
       extendedClientCapabilities = extended,

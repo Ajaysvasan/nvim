@@ -28,21 +28,14 @@
 --     dropped.
 
 local ensure_installed = {
+  -- The languages this branch keeps an LSP for, plus what is needed to
+  -- read and edit the config itself.
   "c",
   "cpp",
   "python",
   "java",
   "go",
-  "javascript",
-  "typescript",
-  "tsx",
-  "html",
-  "css",
-  "scss", -- conform formats it and cssls attaches to it; without the
-  -- parser scss was the one web filetype falling back to regex syntax
-  "angular", -- .component.html resolves to filetype `htmlangular`, which
-  -- maps to the `angular` language, NOT `html`
-  "json",
+  "rust",
   "lua",
   "luadoc",
   "bash",
@@ -52,8 +45,9 @@ local ensure_installed = {
   "vimdoc",
   "regex",
   "query",
+  "json", -- lazy-lock.json and LSP payloads
   "xml", -- pom.xml
-  "yaml", -- application.yml
+  "yaml", -- CI config, application.yml
   "properties", -- application.properties
 }
 

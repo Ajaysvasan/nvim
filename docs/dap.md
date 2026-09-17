@@ -1,8 +1,7 @@
 # `dap.lua` — debugging
 
 [nvim-dap](https://github.com/mfussenegger/nvim-dap) with dap-ui, virtual text,
-and mason-nvim-dap. Covers **Python, JavaScript/TypeScript, Go, C, C++, Rust and
-Java**.
+and mason-nvim-dap. Covers **Python, Go, C, C++, Rust and Java**.
 
 Loads on any `<leader>d*` key, `<F5>`–`<F8>`, or `:DapContinue` / `:DapNew`.
 
@@ -11,14 +10,15 @@ Loads on any `<leader>d*` key, `<F5>`–`<F8>`, or `:DapContinue` / `:DapNew`.
 | Adapter | Covers |
 |---|---|
 | `debugpy` | Python |
-| `js-debug-adapter` | Node, TypeScript, Jest **and Chrome** |
 | `codelldb` | C, C++, Rust |
+| `javadbg` + `javatest` | Java — see [jdtls.md](jdtls.md) |
 
-Two entries were removed from `ensure_installed`:
+Three entries were removed from `ensure_installed`:
 
 | Removed | Why |
 |---|---|
-| `"chrome"` | Resolves to the mason package `chrome-debug-adapter`, the long-superseded standalone adapter. The `pwa-chrome` adapter this config actually registers comes out of **js-debug-adapter**, which is already in the list — so this only ever fetched a second, unused, unmaintained adapter. |
+| `"js"` | **Removed on the `minimal` branch** along with the rest of the web stack. There is no JS/TS language server, treesitter parser or formatter left, so a JS debug adapter had nothing to pair with. |
+| `"chrome"` | Resolves to the mason package `chrome-debug-adapter`, the long-superseded standalone adapter. The `pwa-chrome` adapter came out of **js-debug-adapter** instead — so this only ever fetched a second, unused, unmaintained adapter. |
 | `"delve"` | The Go adapter needs a Go toolchain to build. On a machine without Go the install **fails**, and because it stayed in `ensure_installed` it was retried on **every DAP load** — `[mason-nvim-dap] installing delve` plus a network job, forever. |
 
 `dap.configurations.go` and the `delve` adapter definition are untouched:
@@ -37,7 +37,7 @@ From [`icons.lua`](icons.md): breakpoint, conditional breakpoint, log point,
 stopped, rejected. The stopped line is highlighted with a custom `DapStoppedLine`
 group (`bg = #2d3149`).
 
-Like [lsp.lua](lsp.md) and [neotree.lua](neotree.md), the require is a
+Like [lsp.lua](lsp.md), the require is a
 **soft dependency** — `pcall(require, "ajay.icons")` with an inline ASCII
 fallback table (`B` `C` `L` `>` `X` for signs, `||` `>` `I` `O` `U` `<` for the
 dap-ui controls). A missing icons file never costs you a debugger.
@@ -92,17 +92,6 @@ Inside the scopes/watches/breakpoints panels:
 A full manual fallback config exists if `nvim-dap-python` isn't installed:
 *Launch file*, *Launch with args*, *Attach remote (debugpy)* on port 5678, with
 `VIRTUAL_ENV` / `CONDA_DEFAULT_ENV` detection.
-
-### JavaScript / TypeScript
-`pwa-node` and `pwa-chrome` adapters, both run as servers against Mason's
-`js-debug-adapter`. The same five configurations are registered for
-`javascript`, `typescript`, `javascriptreact` and `typescriptreact`:
-
-1. **Launch Node (current file)** — with source maps, excluding `node_modules`
-2. **Attach to Node process** — interactive process picker
-3. **Debug Jest tests** — `jest --runInBand` in an integrated terminal
-4. **Launch Chrome (localhost:3000)** — `webRoot` at the workspace folder
-5. **Launch with ts-node** — `node --loader ts-node/esm`
 
 ### Go
 `nvim-dap-go` with `dlv`, 20-second initialize timeout, plus an extra "Attach

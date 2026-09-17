@@ -63,7 +63,7 @@ local function report()
   section(out, "nvim-web-devicons")
   local ok, devicons = pcall(require, "nvim-web-devicons")
   if not ok then
-    table.insert(out, "NOT LOADED. Open neo-tree once (<C-n>) and re-run.")
+    table.insert(out, "NOT LOADED. Open a Telescope picker once, then re-run.")
   else
     table.insert(out, "loaded: yes")
     for _, t in ipairs({
@@ -78,7 +78,7 @@ local function report()
     end
     table.insert(out, "")
     table.insert(out, "If the bracketed chars above are present here but you see")
-    table.insert(out, "nothing in neo-tree, the plugin is fine and it IS the font.")
+    table.insert(out, "nothing in Telescope, the plugin is fine and it IS the font.")
   end
 
   -- ── CLIPBOARD ───────────────────────────────────────────────────

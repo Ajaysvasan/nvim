@@ -32,8 +32,7 @@ except where noted.
 
 | Command | Module | Action |
 |---|---|---|
-| `:BigFileStatus` | [bigfile](bigfile.md) | Size, line count, whether protection kicked in, and the current threshold |
-| `:BigFileOff` | bigfile | Lift large-file protections for this buffer — restarts treesitter and syntax |
+| `:BigFile` | [bigfile](bigfile.md) | **Toggle** large-file protection for this buffer (also `<leader>tb`). `:BigFile on\|off\|status` to be explicit. Turning it off restarts treesitter and syntax and re-attaches the language server. |
 
 ## Treesitter
 
@@ -49,40 +48,13 @@ except where noted.
 |---|---|---|
 | `:JdtlsLog` | [jdtls](jdtls.md) | Open this project's Eclipse-side `.metadata/.log` — where the real Java errors are |
 | `:JdtlsWipeWorkspace` | jdtls | Delete this project's jdtls workspace; fixes stale classpath errors |
-| `:JdtlsRescanJDKs` | jdtls | Re-scan installed JDKs. Only needed after installing one mid-session — the scan is cached because it costs ~150 ms per JDK |
 | `:JdtUpdateConfig` | jdtls *(plugin built-in)* | Re-import `pom.xml` / `build.gradle` |
-| `:SpringBootCreate` | [springboot](springboot.md) | Create a project via Spring Initializr |
-| `:SpringBootRun` | springboot | `./mvnw spring-boot:run` / `./gradlew bootRun` |
-| `:SpringBootBuild` | springboot | `./mvnw clean install` / `./gradlew build` |
-| `:SpringBootTest` | springboot | `./mvnw test` / `./gradlew test` |
-| `:SpringBootStop` | springboot | Stop every running Spring Boot task (they are background jobs now, not blocking `:!`) |
-| `:JavaNew` | [java-creator](java-creator.md) | New Java file GUI (`<leader>jN`); available once a Java file is open |
-
-## Copilot
-
-| Command | Module | Action |
-|---|---|---|
-| `:CopilotToggle` | [copilot](copilot.md) | Enable/disable globally, **persisted across restarts** |
-| `:CopilotStatus` | copilot | Show status |
-| `:Copilot auth` | copilot *(plugin built-in)* | Sign in |
-
-## Notebooks — only when `vim.g.enable_notebook = true`
-
-| Command | Module | Action |
-|---|---|---|
-| `:NewNotebook [path]` | [jupyter](jupyter.md) | Create a valid blank `.ipynb` and open it |
-| `:MoltenInit` | jupyter *(plugin built-in)* | Start the Jupyter kernel |
-| `:UpdateRemotePlugins` | *(Neovim built-in)* | Required after installing molten |
 
 ## Appearance
 
 | Command | Module | Action |
 |---|---|---|
 | `:ToggleTransparency` | [transparency](transparency.md) | Toggle transparent background (`<leader>tt`) |
-| `:Theme [name]` | colorscheme | Pick a colorscheme, or apply one by name (tab-completes). Remembered across restarts |
-| `:ThemeNext` | colorscheme | Cycle to the next colorscheme |
-| `:TSContextToggle` | tscontext | Toggle the pinned class/method header (also `<leader>tC`) |
-| `:TSContextEnable` / `:TSContextDisable` | tscontext | Explicit on / off |
 
 ## Plugin-provided commands you'll use often
 
@@ -90,9 +62,8 @@ except where noted.
 |---|---|
 | `:Lazy` | lazy.nvim — plugin state, `:Lazy sync`, `:Lazy profile` |
 | `:Mason` | mason.nvim — install/update LSPs, formatters, DAP adapters |
-| `:Neotree` | neo-tree |
+| `:Explore` / `:Lexplore` | **netrw** — Neovim's built-in file browser, re-enabled on this branch now that neo-tree is gone |
 | `:Telescope <picker>` | telescope |
-| `:LazyGit` | lazygit.nvim |
 | `:Gitsigns toggle_*` | gitsigns — `toggle_signs`, `toggle_numhl`, `toggle_linehl`, `toggle_word_diff` |
 | `:UndotreeToggle` | undotree |
 | `:DapContinue` / `:DapToggleBreakpoint` / `:DapNew` | nvim-dap |

@@ -11,7 +11,7 @@ local M = {}
 -- next time you open that file it mangles it again on the first save.
 --
 -- Persisted to disk instead, using the same pattern (and for the same
--- reason) as the Copilot toggle in copilot.lua: a one-word state file
+-- reason) as the colorscheme choice in colorscheme.lua: a one-word state file
 -- under stdpath("data"), i.e. outside this git repo, so the preference
 -- follows the machine rather than the config.
 --
@@ -49,9 +49,9 @@ end
 --
 -- THE BUG THIS FIXES, demonstrated:
 --
---   a project's .prettierrc:  { "singleQuote": true, "semi": false }
---   prettier on its own    ->  const greeting = 'hello'
---   this config, before    ->  const greeting = "hello";
+--   a project's stylua.toml:  indent_type = "Tabs"
+--   stylua on its own      ->  tabs
+--   this config, before    ->  spaces, because --indent-type won on the CLI
 --
 -- `prepend_args` are passed on the COMMAND LINE, and CLI flags beat a
 -- config file for every formatter here. So the personal style defaults
@@ -62,8 +62,8 @@ end
 --
 -- Two things are detected, and they are different questions:
 --
---   1. WHICH TOOL does this project use?  (ruff vs black, biome vs
---      prettier) -- answered by which config files exist.
+--   1. WHICH TOOL does this project use?  (ruff vs black) -- answered by
+--      which config files exist.
 --   2. Does the project STATE ITS OWN STYLE?  If yes, pass no style
 --      flags at all and let the tool read the project's config.
 --
@@ -124,7 +124,7 @@ end
 
 -- Detection touches the filesystem, and format_on_save runs on EVERY
 -- write, so results are cached per directory. Cleared by :FormatDetect!
--- and on DirChanged -- adding a .prettierrc mid-session is rare enough
+-- and on DirChanged -- adding a stylua.toml mid-session is rare enough
 -- to want an explicit bust rather than a stat on every save.
 local detect_cache = {}
 
@@ -139,25 +139,6 @@ local function detect(dir)
   local d = {}
 
   -- ── Does the project state its own style? ──
-  d.prettier_config = find_up(dir, {
-    ".prettierrc",
-    ".prettierrc.json",
-    ".prettierrc.yml",
-    ".prettierrc.yaml",
-    ".prettierrc.json5",
-    ".prettierrc.js",
-    ".prettierrc.cjs",
-    ".prettierrc.mjs",
-    ".prettierrc.toml",
-    "prettier.config.js",
-    "prettier.config.cjs",
-    "prettier.config.mjs",
-    "prettier.config.ts",
-  }) ~= nil
-  -- A "prettier" key in package.json is equally authoritative.
-  if not d.prettier_config then
-    d.prettier_config = file_matches(find_up(dir, { "package.json" }), '"prettier"%s*:')
-  end
 
   d.stylua_config = find_up(dir, { "stylua.toml", ".stylua.toml" }) ~= nil
   d.black_config = pyproject_declares(dir, "black")
@@ -173,9 +154,6 @@ local function detect(dir)
   -- :FormatDetect can tell you what to install.
   d.ruff_wanted = find_up(dir, { "ruff.toml", ".ruff.toml" }) ~= nil or pyproject_declares(dir, "ruff")
   d.python_tool = (d.ruff_wanted and has_exe("ruff")) and "ruff" or "black"
-
-  d.biome_wanted = find_up(dir, { "biome.json", "biome.jsonc" }) ~= nil
-  d.web_tool = (d.biome_wanted and has_exe("biome")) and "biome" or "prettier"
 
   detect_cache[dir] = d
   return d
@@ -221,15 +199,6 @@ local function venv_bin(name)
   }, name)
 end
 
---- Shared by every filetype biome is able to handle.
-local function web_formatters(bufnr)
-  if detect_buf(bufnr).web_tool == "biome" then
-    return { "biome" }
-  end
-  return { "prettier" }
-end
-
-
 function M.setup()
   -- Restore BEFORE conform.setup() below registers format_on_save.
   --
@@ -253,44 +222,14 @@ function M.setup()
       lua = { "stylua" },
 
       -- Python -- ruff when the project asks for it, else isort+black.
-      -- pytorch is the live example: its pyproject.toml declares
-      -- [tool.ruff] and [tool.ruff.format], so running black there would
-      -- be the wrong tool entirely.
+      -- A project whose pyproject.toml declares [tool.ruff] gets ruff;
+      -- everything else keeps isort+black. See the detection block above.
       python = function(bufnr)
         if detect_buf(bufnr).python_tool == "ruff" then
-          -- Same import-fixer-then-formatter shape as isort+black.
           return { "ruff_organize_imports", "ruff_format" }
         end
         return { "isort", "black" }
       end,
-
-      -- JavaScript/TypeScript -- biome when the project has biome.json,
-      -- else prettier.
-      --
-      -- Only these filetypes are routed through biome detection. biome
-      -- does not handle html, scss, yaml or markdown at all, so those
-      -- stay on prettier unconditionally below -- handing biome a file it
-      -- cannot parse would fail the format rather than fall back.
-      javascript = web_formatters,
-      javascriptreact = web_formatters,
-      typescript = web_formatters,
-      typescriptreact = web_formatters,
-
-      -- Web
-      html = { "prettier" },
-      -- Angular templates are their OWN filetype (htmlangular), so an
-      -- `html` entry never reached them -- <leader>lf and format-on-save
-      -- were both no-ops in every .component.html. Plain prettier is
-      -- enough: its html parser already understands *ngIf, [(ngModel)],
-      -- {{ interpolation }} and Angular 17 @if/@for control flow, and
-      -- produces byte-identical output to `--parser angular`.
-      htmlangular = { "prettier" },
-      css = { "prettier" },
-      scss = { "prettier" },
-      json = web_formatters,
-      jsonc = web_formatters,
-      yaml = { "prettier" },
-      markdown = { "prettier" },
 
       -- C/C++
       c = { "clang_format" },
@@ -299,17 +238,18 @@ function M.setup()
       -- Java
       java = { "google-java-format" },
 
+      -- Go
+      go = { "goimports", "gofumpt" },
+
       -- Shell
       sh = { "shfmt" },
       bash = { "shfmt" },
 
-      -- Go
-      go = { "goimports", "gofumpt" },
-
-      -- XML has no entry here on purpose. lemminx (lsp.lua) is a solid
-      -- formatter on its own, and format_on_save below already sets
-      -- lsp_format = "fallback" -- conform reaches for lemminx automatically
-      -- since no formatters_by_ft.xml exists. One less CLI tool to install.
+      -- Rust has no entry on purpose, and neither did XML before it.
+      -- format_on_save below sets lsp_format = "fallback", so a filetype
+      -- with no formatters_by_ft entry is formatted by its language
+      -- server -- rust_analyzer drives rustfmt itself. One less CLI tool
+      -- to install and keep in sync with the toolchain.
     },
 
     -- Format on save
@@ -335,34 +275,17 @@ function M.setup()
       -- moment a project states its own style, we pass nothing and let the
       -- tool read the project's config. See the detection block above for
       -- why: CLI flags beat config files, so unconditional args silently
-      -- overrode .prettierrc / stylua.toml / [tool.black].
+      -- overrode stylua.toml / [tool.black].
       stylua = {
         prepend_args = style_unless_project_config(
           "stylua_config",
           { "--indent-type", "Spaces", "--indent-width", "2" }
         ),
       },
-      prettier = {
-        -- prettier already resolves node_modules/.bin/prettier itself
-        -- (conform.util.from_node_modules), so a project pinning
-        -- prettier@2 is formatted by prettier@2, not the global one.
-        prepend_args = style_unless_project_config("prettier_config", {
-          "--tab-width",
-          "2",
-          "--use-tabs",
-          "false",
-          "--single-quote",
-          "false",
-          "--trailing-comma",
-          "es5",
-          "--semi",
-          "true",
-        }),
-      },
 
       -- Python tools resolve from the project's virtualenv first.
       --
-      -- Unlike prettier, conform ships these with a bare `command =
+      -- conform ships these with a bare `command =
       -- "black"`, so a project pinning black 23 in .venv was formatted by
       -- whatever Mason installed globally -- and black's output changes
       -- between majors (string normalisation, the magic trailing comma).
@@ -526,10 +449,8 @@ function M.setup()
       "",
       "Detected in this project:",
       ("  python tool : %s%s"):format(d.python_tool, d.ruff_wanted and "   [project asks for ruff]" or ""),
-      ("  web tool    : %s%s"):format(d.web_tool, d.biome_wanted and "   [project asks for biome]" or ""),
       "",
       "Project states its own style (we pass no style flags):",
-      ("  prettier    : %s"):format(d.prettier_config and "yes" or "no"),
       ("  stylua      : %s"):format(d.stylua_config and "yes" or "no"),
       ("  black       : %s"):format(d.black_config and "yes" or "no"),
       ("  clang-format: %s"):format(d.clang_format_config and "yes" or "no"),
@@ -543,12 +464,6 @@ function M.setup()
       lines[#lines + 1] = ""
       lines[#lines + 1] = "! This project wants ruff, but ruff is not installed."
       lines[#lines + 1] = "  Using isort+black instead.  Fix: :MasonInstall ruff"
-      level = vim.log.levels.WARN
-    end
-    if d.biome_wanted and d.web_tool ~= "biome" then
-      lines[#lines + 1] = ""
-      lines[#lines + 1] = "! This project wants biome, but biome is not installed."
-      lines[#lines + 1] = "  Using prettier instead.  Fix: :MasonInstall biome"
       level = vim.log.levels.WARN
     end
     lines[#lines + 1] = ""

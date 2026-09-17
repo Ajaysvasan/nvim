@@ -13,7 +13,6 @@ you most likely want:
 
 | Source | Priority | Menu tag | Why |
 |---|---|---|---|
-| `copilot` | 1100 | `[AI]` | AI suggestions surface above everything else |
 | `nvim_lsp` | 1000 | `[LSP]` | The type-correct answers |
 | `luasnip` | 750 | `[Snip]` | Snippets below real symbols so they don't hijack a name you're typing |
 | `path` | 500 | `[Path]` | |
@@ -63,8 +62,6 @@ Both the completion menu and the documentation window use
 `<Tab>`/`<S-Tab>` are mapped in both insert (`i`) and select (`s`) mode so
 snippet placeholder jumping works while text is selected.
 
-> Copilot has its own separate accept key, `<M-l>` — see [copilot.md](copilot.md).
-> Copilot suggestions appear *both* as ghost text (accept with `<M-l>`) and as
 > `[AI]` entries in this menu (accept with `<CR>`).
 
 ## Snippets
@@ -97,6 +94,5 @@ Full HTML5 boilerplate: doctype, `lang="en"`, charset, viewport meta, a
 
 ## Related
 
-- [copilot.md](copilot.md) — the `copilot` source is registered by `copilot-cmp`
 - [lsp.md](lsp.md) — `cmp_nvim_lsp.default_capabilities()` is what tells servers
   this client supports snippets and additional text edits

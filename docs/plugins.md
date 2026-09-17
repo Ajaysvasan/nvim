@@ -33,9 +33,7 @@ three failure modes and names the file in each:
 
 | Plugin | Trigger | Why |
 |---|---|---|
-| `catppuccin/nvim` | `lazy = false`, `priority = 1000` | A colorscheme must be loaded and applied before anything renders |
-| `goolord/alpha-nvim` | `VimEnter` | Start screen only matters at launch |
-| `neo-tree.nvim` | `cmd = Neotree`, `keys = <C-n>` | |
+| `Mofiqul/vscode.nvim` | `lazy = false`, `priority = 1000` | A colorscheme must be loaded and applied before anything renders |
 | `telescope.nvim` | `cmd = Telescope` + the `<leader>f` keys | |
 | `mason.nvim` | `cmd = Mason*`, `build = :MasonUpdate` | Only needed when you open the UI or something needs installing |
 | `mason-lspconfig.nvim` | `lazy = true` — no trigger | Pulled in by `lsp.lua` only when a server is missing |
@@ -43,25 +41,18 @@ three failure modes and names the file in each:
 | `nvim-lspconfig` | `BufReadPre`, `BufNewFile` | The earliest point a server could be needed |
 | `nvim-jdtls` | `ft = java` | |
 | `nvim-cmp` | `InsertEnter`, `CmdlineEnter` | Completion can't be needed before you start typing |
-| `copilot.lua` | `cmd = Copilot`, `InsertEnter` | |
 | `nvim-treesitter` | **`lazy = false`**, `branch = "main"`, `build = :TSUpdate` | On the `main` branch highlighting is started by a `FileType` autocmd that `treesitter.lua` registers, so the plugin must be loaded **before** the first `FileType` event rather than by it |
 | `conform.nvim` | `BufWritePre`, `cmd = ConformInfo/Format`, `<leader>lf` | Format-on-save is the only thing that needs it early |
+| `which-key.nvim` | `event = VeryLazy` | Must be listening *before* you press a prefix — a key trigger would eat the first press ([whichkey.md](whichkey.md)) |
 | `gitsigns.nvim` | `BufReadPre`, `BufNewFile` | |
-| `lazygit.nvim` | `cmd = LazyGit*`, `<leader>gg` / `<leader>gf` | |
 | `nvim-dap` | `<leader>d*` keys, `<F5>`–`<F8>`, `cmd = Dap*` | |
 | `harpoon` | `<leader>a`, `<leader>he`, `<leader>hh` | |
 | `lualine.nvim` | `VeryLazy` | Statusline can appear a frame late |
 | `indent-blankline` | `BufReadPost`, `BufNewFile` | |
 | `Comment.nvim` | `BufReadPost`, `BufNewFile` | |
 | `undotree` | `cmd = Undotree*`, `<leader>u` | |
-| `nvim-emmet` | `ft = html, htmlangular, css, scss, less, jsx, tsx, vue, svelte` | Inert without `emmet_language_server` — see [qol.md](qol.md#it-needs-a-language-server) |
 | `rainbow-delimiters.nvim` | `BufReadPost`, `BufNewFile` | |
-| `nvim-treesitter-context` + `nvim-navic` | `BufReadPost`, `BufNewFile`, `<leader>tC` | navic drives the winbar breadcrumb (always on); the treesitter-context overlay is **off by default** because it hides code — see [treesitter.md](treesitter.md#where-am-i-tscontextlua) |
-| `log-highlight.nvim` | `ft = log` | The filetype rule that makes that trigger reachable is registered in `init` — core Neovim never sets `filetype=log` |
-| `persistence.nvim` | `BufReadPre`, `<leader>S*` | Sessions — see [keymap-reference.md](keymap-reference.md) |
 | `glance.nvim` | `cmd = Glance` | Driven by `gr` / `gi` / `<leader>lp` in [lsp.md](lsp.md#find-usages-glance) |
-| `vscode.nvim`, `darcula-dark.nvim` | `lazy = false`, **dependencies of catppuccin** | Load order: lazy.nvim loads dependencies first, so both are on the runtimepath before `colorscheme.lua` picks one — see [colorscheme.md](colorscheme.md) |
-| jupytext / image.nvim / molten | `enabled = vim.g.enable_notebook` | Opt-in, see [jupyter.md](jupyter.md) |
 
 ## Fixes baked into the spec
 
@@ -105,9 +96,8 @@ upstream so no fix is coming**. Full explanation in [treesitter.md](treesitter.m
 Both must be on the same branch — the two APIs are not interchangeable. Without
 the dependency, `treesitter.lua`'s textobjects block is skipped.
 
-**`springboot` is wired to the jdtls spec.** The old `init.lua` did
-`require("ajay.springboot")`, which only returns the module table — `setup()`
-was never called, so `:SpringBootRun` and `<leader>sr` never existed.
+**The jdtls spec loads `ajay.jdtls` and nothing else.** It used to also wire up
+`ajay.springboot` and `ajay.java-creator`; both modules are gone on this branch.
 
 **nvim-dap declared once.** The old file declared it twice at the top level with
 two different `config` functions.
@@ -120,28 +110,26 @@ in `init`.** That skips the plugin's own autocmd, because Comment.nvim's
 
 | Option | Value | Why |
 |---|---|---|
-| `install.colorscheme` | `{ "catppuccin" }` | The install screen uses the real theme |
+| `install.colorscheme` | `{ "vscode", "habamax" }` | The install screen uses the real theme, falling back to a built-in |
 | `checker.enabled` | `false` | No background update checks — no surprise network calls at startup |
 | `change_detection.notify` | `false` | Editing the config shouldn't pop a notification |
-| `rocks.enabled` / `rocks.hererocks` | `= vim.g.enable_notebook` | Only bootstrap luarocks when the notebook stack is actually on |
-| `performance.rtp.disabled_plugins` | `gzip`, `tarPlugin`, `tohtml`, `tutor`, `zipPlugin`, `netrwPlugin`, and conditionally `rplugin` | Shaves startup. **`rplugin` is only disabled when notebooks are OFF** — molten-nvim is a Python remote plugin and needs the rplugin host, so disabling it would break `:MoltenInit` silently. |
+| `rocks.enabled` / `rocks.hererocks` | `false` | Nothing on this branch needs luarocks. It was only ever bootstrapped for molten. |
+| `performance.rtp.disabled_plugins` | `gzip`, `tarPlugin`, `tohtml`, `tutor`, `zipPlugin`, `rplugin` | Shaves startup. **`netrwPlugin` is deliberately NOT in this list on the minimal branch** — with neo-tree gone, netrw is the only file browser left, so `:Explore` has to work. `rplugin` is now unconditional; molten was the only remote plugin. |
 
 ## Full plugin list
 
 <details>
-<summary>51 plugins</summary>
+<summary>39 plugins</summary>
 
-Comment.nvim, LuaSnip, alpha-nvim, catppuccin, cmp-buffer, cmp-nvim-lsp, cmp-
-path, cmp_luasnip, conform.nvim, copilot-cmp, copilot.lua, darcula-dark.nvim,
-friendly-snippets, gitsigns.nvim, glance.nvim, harpoon, indent-blankline.nvim,
-lazy.nvim, lazygit.nvim, log-highlight.nvim, lualine.nvim, mason-
-lspconfig.nvim, mason-nvim-dap.nvim, mason-tool-installer.nvim, mason.nvim,
-neo-tree.nvim, nui.nvim, nvim-cmp, nvim-dap, nvim-dap-go, nvim-dap-python,
-nvim-dap-ui, nvim-dap-virtual-text, nvim-emmet, nvim-jdtls, nvim-lspconfig,
-nvim-navic, nvim-nio, nvim-treesitter, nvim-treesitter-context, nvim-
-treesitter-textobjects, nvim-ts-context-commentstring, nvim-web-devicons,
-persistence.nvim, plenary.nvim, rainbow-delimiters.nvim, telescope-dap.nvim,
-telescope-fzf-native.nvim, telescope.nvim, undotree, vscode.nvim
+Comment.nvim, LuaSnip, cmp-buffer, cmp-nvim-lsp, cmp-path, cmp_luasnip,
+conform.nvim, friendly-snippets, gitsigns.nvim, glance.nvim, harpoon,
+indent-blankline.nvim, lazy.nvim, lualine.nvim, mason-lspconfig.nvim, mason-
+nvim-dap.nvim, mason-tool-installer.nvim, mason.nvim, nvim-cmp, nvim-dap,
+nvim-dap-go, nvim-dap-python, nvim-dap-ui, nvim-dap-virtual-text, nvim-
+jdtls, nvim-lspconfig, nvim-nio, nvim-treesitter, nvim-treesitter-
+textobjects, nvim-ts-context-commentstring, nvim-web-devicons, plenary.nvim,
+rainbow-delimiters.nvim, telescope-dap.nvim, telescope-fzf-native.nvim,
+telescope.nvim, undotree, vscode.nvim, which-key.nvim
 
 </details>
 
@@ -150,10 +138,9 @@ telescope-fzf-native.nvim, telescope.nvim, undotree, vscode.nvim
 The `keys = { ... }` entries in this file are **lazy-load triggers only** — they
 declare the key and a description so lazy.nvim knows when to load the plugin.
 The real mapping is defined in the plugin's module. The one exception is
-`<leader>u` (undotree) and `<leader>le` (emmet), which are defined inline
-because those plugins have no module file.
+`<leader>u` (undotree), which is defined inline
+because that plugin has no module file.
 
 | Key | Action | Defined |
 |---|---|---|
 | `<leader>u` | Toggle undo tree | inline in the spec |
-| `<leader>le` | Emmet: wrap with abbreviation (n, v) | inline in the spec |

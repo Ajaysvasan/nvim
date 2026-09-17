@@ -87,10 +87,8 @@ version silently ran the wrong command there.
 | `<leader>f*` | [telescope.lua](telescope.md) |
 | `gd`, `gr`, `K`, `<leader>ca`, `<leader>rn`, `<leader>l{d,q}` | [lsp.lua](lsp.md) — buffer-local, via `LspAttach` |
 | `<leader>d*`, `<F5>`–`<F10>` | [dap.lua](dap.md) |
-| `<C-n>` | [neotree.lua](neotree.md) |
 | `<leader>lf` | [conform.lua](conform.md) |
 | `<leader>h*` | [gitsigns.lua](gitsigns.md) and [harpoon.lua](harpoon.md) |
-| `<leader>g*` | [gitsigns.lua](gitsigns.md), [lazygit.lua](lazygit.md), [telescope.lua](telescope.md) |
+| `<leader>g*` | [gitsigns.lua](gitsigns.md), [telescope.lua](telescope.md) |
 | `<leader>j*` | [jdtls.lua](jdtls.md) |
-| `<leader>m*` | [jupyter.lua](jupyter.md) |
-| `<leader>c{t,s,p}` | [copilot.lua](copilot.md) |
+| `<leader>m*` | [jupyter.lua] (removed) |

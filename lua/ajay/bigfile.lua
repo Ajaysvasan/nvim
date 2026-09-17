@@ -22,15 +22,50 @@
 local M = {}
 
 -- Bytes, not lines: a line count needs the file read first, which is
--- part of what is slow. 1 MB is roughly 20-30k lines of ordinary code.
-M.max_bytes = 1024 * 1024
+-- part of what is slow.
+--
+-- 5 MB, raised from 1 MB. MEASURED on this machine (synthetic C, realistic
+-- open -- no forced full parse), time to open and be interactive:
+--
+--   file     full stack   treesitter off   + syntax off
+--   1.4 MB     242 ms         107 ms           90 ms
+--   4.3 MB     514 ms         124 ms          109 ms
+--    10 MB    1047 ms         216 ms          120 ms
+--
+-- And keystroke latency with treesitter ACTIVE stayed flat at every size:
+-- 0.12-0.26 ms median, p95 under 0.7 ms, even on the 10 MB / 175k-line
+-- buffer. Treesitter's incremental parse handles big files fine; the whole
+-- cost is the initial parse on open.
+--
+-- So 1 MB was stripping every feature off a file that would have opened in
+-- a quarter of a second. At 5 MB the full stack still opens in ~0.6 s,
+-- which is the point where a freeze starts to be worth avoiding.
+--
+-- For scale: 1 of 6767 kafka source files and 112 of 64952 linux source
+-- files exceed even the OLD 1 MB gate, so this is a rare path either way --
+-- which is exactly why it should not be aggressive.
+M.max_bytes = 5 * 1024 * 1024
 
--- Second gate for files that are small on disk but pathological in shape
--- (minified JS, one-line JSON, generated SQL).
+-- Second, much higher gate. Past this the file is big enough that a
+-- language server indexing it is itself a problem, so LSP goes too.
+M.lsp_max_bytes = 20 * 1024 * 1024
+
+-- Third gate, for files that are small on disk but pathological in SHAPE
+-- (minified JS, one-line JSON, generated SQL). A single enormous line
+-- defeats incremental parsing and regex syntax alike, regardless of total
+-- size, so this one also turns off LSP.
 M.max_line_length = 2000
 
-local function disable_for(buf)
+--- @param buf integer
+--- @param drop_lsp boolean  true for the extreme tiers (see thresholds above)
+local function disable_for(buf, drop_lsp)
   vim.b[buf].bigfile = true
+  -- Separate flag on purpose. `bigfile` means "skip the expensive UI work";
+  -- only this one means "no language server". LSP runs out of process and
+  -- does not block redraw, so a merely large file keeps completion,
+  -- diagnostics and gd/gr -- which is the whole reason this used to be
+  -- annoying enough to turn off by hand.
+  vim.b[buf].bigfile_no_lsp = drop_lsp or false
 
   -- conform already honours this (see conform.lua's format_on_save).
   vim.b[buf].disable_autoformat = true
@@ -62,16 +97,9 @@ local function disable_for(buf)
     require("ibl").setup_buffer(buf, { enabled = false })
   end)
 
-  vim.schedule(function()
-    if vim.api.nvim_buf_is_valid(buf) then
-      vim.notify(
-        "Large file: treesitter, LSP, git signs and format-on-save disabled.\n"
-          .. "Re-enable for this buffer with :BigFileOff",
-        vim.log.levels.WARN,
-        { title = "bigfile" }
-      )
-    end
-  end)
+  -- No notification. Opening a file should not require acknowledging a
+  -- message, and the state is visible anyway (no highlighting) and
+  -- queryable with :BigFile status.
 end
 
 function M.setup()
@@ -82,7 +110,7 @@ function M.setup()
     callback = function(args)
       local ok, stats = pcall((vim.uv or vim.loop).fs_stat, args.match)
       if ok and stats and stats.size > M.max_bytes then
-        disable_for(args.buf)
+        disable_for(args.buf, stats.size > M.lsp_max_bytes)
       end
     end,
   })
@@ -97,7 +125,7 @@ function M.setup()
       local lines = vim.api.nvim_buf_get_lines(args.buf, 0, 64, false)
       for _, line in ipairs(lines) do
         if #line > M.max_line_length then
-          disable_for(args.buf)
+          disable_for(args.buf, true) -- pathological shape: LSP off too
           return
         end
       end
@@ -109,7 +137,7 @@ function M.setup()
   vim.api.nvim_create_autocmd("LspAttach", {
     group = group,
     callback = function(args)
-      if vim.b[args.buf].bigfile then
+      if vim.b[args.buf].bigfile_no_lsp then
         vim.schedule(function()
           pcall(vim.lsp.buf_detach_client, args.buf, args.data.client_id)
         end)
@@ -141,9 +169,10 @@ function M.setup()
     end,
   })
 
-  vim.api.nvim_create_user_command("BigFileOff", function()
-    local buf = vim.api.nvim_get_current_buf()
+  --- Lift protections on the current buffer and bring the full stack back.
+  local function protect_off(buf, quiet)
     vim.b[buf].bigfile = nil
+    vim.b[buf].bigfile_no_lsp = nil
     vim.b[buf].disable_autoformat = nil
     vim.b[buf].codelens_off = nil
     vim.api.nvim_buf_call(buf, function()
@@ -154,14 +183,14 @@ function M.setup()
 
     -- Re-attach any already-running server that handles this filetype.
     --
-    -- Without this, :BigFileOff gave you treesitter back but left the
-    -- buffer permanently without LSP -- and since lsp.lua now skips
-    -- mapping gd/gr/K on a bigfile buffer, without their keymaps too.
+    -- Without this you got treesitter back but the buffer stayed
+    -- permanently without LSP -- and since lsp.lua skips mapping gd/gr/K on
+    -- a protected buffer, without their keymaps too.
     --
     -- Order matters: the flags above are cleared FIRST, so when
     -- buf_attach_client fires LspAttach, lsp.lua sees a normal buffer and
-    -- registers the keymaps, while the detach handler in this file sees
-    -- the same and leaves the client alone.
+    -- registers the keymaps, while the detach handler above sees the same
+    -- and leaves the client alone.
     local ft = vim.bo[buf].filetype
     local reattached = {}
     for _, client in ipairs(vim.lsp.get_clients()) do
@@ -172,19 +201,17 @@ function M.setup()
         end
       end
     end
+    if not quiet then
+      vim.notify(
+        "Big-file protection OFF for this buffer."
+          .. (#reattached > 0 and ("  LSP: " .. table.concat(reattached, ", ")) or ""),
+        vim.log.levels.INFO,
+        { title = "bigfile" }
+      )
+    end
+  end
 
-    vim.notify(
-      "Big-file protections lifted for this buffer."
-        .. (
-          #reattached > 0 and ("\nRe-attached: " .. table.concat(reattached, ", "))
-          or "\nNo language server was running to re-attach; reopen the file to start one."
-        ),
-      vim.log.levels.INFO
-    )
-  end, { desc = "Re-enable treesitter/LSP on a large buffer" })
-
-  vim.api.nvim_create_user_command("BigFileStatus", function()
-    local buf = vim.api.nvim_get_current_buf()
+  local function status(buf)
     local name = vim.api.nvim_buf_get_name(buf)
     local size = 0
     if name ~= "" then
@@ -192,16 +219,54 @@ function M.setup()
       size = (ok and st) and st.size or 0
     end
     vim.notify(
-      ("size      : %.1f MB\nlines     : %d\nprotected : %s\nthreshold : %.1f MB"):format(
+      ("size      : %.1f MB\nlines     : %d\nprotected : %s\nLSP       : %s\nthresholds: %.0f MB (protect) / %.0f MB (drop LSP)"):format(
         size / 1024 / 1024,
         vim.api.nvim_buf_line_count(buf),
         tostring(vim.b[buf].bigfile == true),
-        M.max_bytes / 1024 / 1024
+        vim.b[buf].bigfile_no_lsp and "off" or "on",
+        M.max_bytes / 1024 / 1024,
+        M.lsp_max_bytes / 1024 / 1024
       ),
       vim.log.levels.INFO,
       { title = "bigfile" }
     )
-  end, { desc = "Show big-file status for this buffer" })
+  end
+
+  -- ONE command instead of the old :BigFileOff / :BigFileStatus pair.
+  -- Bare `:BigFile` toggles, which is what you actually want when a file
+  -- you care about got caught by the gate.
+  vim.api.nvim_create_user_command("BigFile", function(a)
+    local buf = vim.api.nvim_get_current_buf()
+    local arg = (a.args or ""):lower()
+    if arg == "status" then
+      status(buf)
+    elseif arg == "on" then
+      disable_for(buf, false)
+    elseif arg == "off" then
+      protect_off(buf)
+    else
+      if vim.b[buf].bigfile then
+        protect_off(buf)
+      else
+        disable_for(buf, false)
+        vim.notify("Big-file protection ON for this buffer.", vim.log.levels.INFO, { title = "bigfile" })
+      end
+    end
+  end, {
+    nargs = "?",
+    complete = function()
+      return { "on", "off", "status" }
+    end,
+    desc = "Toggle big-file protection for this buffer (on|off|status)",
+  })
+
+  -- <leader>tB, capital. <leader>tb is gitsigns' blame toggle, mapped
+  -- buffer-locally in its on_attach -- a buffer-local mapping silently wins
+  -- over a global one, so this would have been dead in every git-tracked
+  -- file. Same trap that killed harpoon's remove on <leader>hd once.
+  vim.keymap.set("n", "<leader>tB", function()
+    vim.cmd("BigFile")
+  end, { desc = "Toggle big-file protection", silent = true })
 end
 
 return M

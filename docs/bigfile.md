@@ -25,12 +25,13 @@ Its `BufReadPre` autocmd has to exist before the first file is opened, including
 one passed on the command line — registering it from a plugin spec would be too
 late for `nvim somehugefile.json`.
 
-## The two gates
+## The three gates
 
 | Gate | Threshold | Checked at | Why |
 |---|---|---|---|
-| **Size** | `M.max_bytes` = 1 MB | `BufReadPre`, via `fs_stat` | Bytes, not lines: a line count needs the file read first, which is part of what is slow. 1 MB is roughly 20–30k lines of ordinary code. |
-| **Shape** | `M.max_line_length` = 2000 | `BufReadPost`, first 64 lines | Catches files that are small on disk but pathological in shape — minified JS, one-line JSON, generated SQL. A 313 KB minified bundle trips this even though it is well under the size gate. |
+| **Size** | `M.max_bytes` = **5 MB** | `BufReadPre`, via `fs_stat` | Bytes, not lines: a line count needs the file read first, which is part of what is slow. Turns off the expensive UI work — **LSP stays**. |
+| **LSP** | `M.lsp_max_bytes` = **20 MB** | `BufReadPre` | Past this, a language server indexing the file is itself the problem, so it is detached too. |
+| **Shape** | `M.max_line_length` = 2000 | `BufReadPost`, first 64 lines | Files small on disk but pathological in shape — minified JS, one-line JSON, generated SQL. A single enormous line defeats incremental parsing and regex syntax alike, so this one drops LSP as well. |
 
 Both set the buffer-local flag `vim.b[buf].bigfile = true`.
 
@@ -69,27 +70,81 @@ bigfile buffers. They do file I/O on every buffer switch, which is exactly the
 latency this module exists to avoid, and a view file for a huge buffer is huge.
 
 **gitsigns** has its own independent size gate — `max_file_length`, set to 20000
-lines in [`gitsigns.lua`](gitsigns.md) to roughly match the 1 MB threshold here.
+lines in [`gitsigns.lua`](gitsigns.md).
 
 A notification fires once per buffer telling you what was switched off.
 
-## Commands
+## Commands and keymaps
 
-| Command | Action |
+| | |
 |---|---|
-| `:BigFileOff` | Lift the protections for the current buffer — clears the flags, turns syntax and cursorline back on, restarts treesitter, and **re-attaches any running language server** that handles the filetype. Use when you actually do need highlighting on a big file and are willing to wait. |
-| `:BigFileStatus` | Size in MB, line count, whether the buffer is protected, and the current threshold. |
+| `:BigFile` | **Toggle** protection for the current buffer |
+| `<leader>tB` | Same, as a key |
+| `:BigFile on` / `off` | Be explicit instead of toggling |
+| `:BigFile status` | Size, line count, whether protected, whether LSP is on, and both thresholds |
 
-> **Why the re-attach matters.** [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)
-> now skips mapping `gd` / `gr` / `K` on a flagged buffer — those keymaps used
-> to be created and then left pointing at a client this module had detached,
-> which is what produced
-> `method "textDocument/definition" is not supported by any server`.
-> Without re-attaching, `:BigFileOff` would give you treesitter back but leave
-> the buffer permanently without LSP *and* without its keymaps. The flags are
-> cleared *first*, so the `LspAttach` that follows sees a normal buffer:
-> `lsp.lua` registers the keymaps, and the detach handler here leaves the
-> client alone.
+Turning it **off** clears the flags, restores syntax and cursorline, restarts
+treesitter, and **re-attaches any running language server** for the filetype.
+
+> This replaced a one-way `:BigFileOff` plus a separate `:BigFileStatus`. A
+> file you care about getting caught by the gate is the common case, so the
+> bare command toggles.
+
+> `<leader>tB` is capital on purpose. `<leader>tb` is gitsigns' blame toggle,
+> mapped **buffer-locally** in its `on_attach` — and a buffer-local mapping
+> silently wins over a global one, so a global `<leader>tb` would have been
+> dead in every git-tracked file. Same trap that once killed harpoon's remove
+> on `<leader>hd`.
+
+> Without the re-attach, turning protection off would give you treesitter back
+> but leave the buffer permanently without LSP — and since `lsp.lua` skips
+> mapping `gd`/`gr`/`K` on a detached buffer, without their keymaps too.
+
+## Why 5 MB, and why LSP stays
+
+The threshold used to be **1 MB** and it stripped everything, LSP included.
+Measured on this machine (synthetic C, realistic open — no forced full parse):
+
+| file | full stack | treesitter off | + syntax off |
+|---|---|---|---|
+| 1.4 MB | 242 ms | 107 ms | 90 ms |
+| 4.3 MB | 514 ms | 124 ms | 109 ms |
+| 10 MB | 1047 ms | 216 ms | 120 ms |
+
+And keystroke latency with treesitter **active** stayed flat at every size —
+0.12–0.26 ms median, p95 under 0.7 ms, even on the 10 MB / 175k-line buffer.
+
+Two conclusions:
+
+1. **Treesitter's incremental parse handles big files fine.** The entire cost
+   is the initial parse on open, not editing. So the gate should be set where a
+   *freeze on open* starts to matter, which is well past 1 MB — at 1.4 MB the
+   full stack opened in a quarter of a second and got stripped anyway.
+2. **LSP is not what makes it slow.** It runs out of process and never blocks
+   redraw. It was the first thing turned off and should have been the last —
+   losing `gd`/`gr`/completion is exactly what made this annoying enough to
+   disable by hand.
+
+For scale: **1 of 6767** kafka source files and **112 of 64952** linux source
+files exceed even the old 1 MB gate, and **0 of 8000** sampled files in either
+repo trip the long-line gate. This is a rare path either way, which is the
+argument for not making it aggressive.
+
+> The jdtls guard moved to the same flag. Starting jdtls on a protected buffer
+> once caused two servers to write one workspace index concurrently — but that
+> was triggered by the *detach*, and a merely large Java file is no longer
+> detached, so the failure cannot arise. See [jdtls.md](jdtls.md).
+
+## Related: the rainbow-delimiters size gate
+
+Large-file cost is not all governed by this module. `rainbow-delimiters.nvim`
+forced a **full synchronous parse of the entire buffer** on attach, at any size,
+and `disable_for()` never touched it — it escaped only as a side effect of
+`vim.treesitter.stop()`. It is now gated separately at 5000 lines; see
+[qol.md](qol.md#size-gate--it-was-the-single-worst-performance-bug-in-this-config).
+
+That cost was **independent of these thresholds**: a 1.42 MB Java file sitting
+below the 5 MB gate still paid 2.09 s and 159 MB before the gate was added.
 
 ## Tuning
 

@@ -1,5 +1,29 @@
 # Documentation index
 
+> ### You are on the `minimal` branch
+>
+> This branch strips the config down to a core editing setup. Relative to `main`
+> it removes **neo-tree**, **lazygit**, the whole **Jupyter/molten/image.nvim**
+> notebook stack, **nvim-autopairs**, **nvim-emmet**, the **web language servers**
+> (`ts_ls`, `eslint`, `html`, `cssls`, `tailwindcss`, `angularls`,
+> `emmet_language_server`) and the Java IDE-clone modules (`java-creator.lua`,
+> `springboot.lua`).
+>
+> **Kept:** jdtls, DAP, and language servers for Python, Java, C, C++, Go and
+> Rust — plus `lua_ls`, without which this config could not be edited comfortably.
+> Also removed: **nvim-treesitter-context** + **nvim-navic** (the sticky
+> class/method header and the winbar breadcrumb), **log-highlight.nvim**,
+> **alpha-nvim** (the start screen), **copilot.lua** + **copilot-cmp** —
+> agentic AI work happens in a dedicated tool, not in the editor — and
+> **persistence.nvim**, since [harpoon](harpoon.md) already is the working set.
+>
+> `netrw` is re-enabled to replace neo-tree, `rust`/`rust_analyzer` are new, and
+> **which-key** is added.
+>
+> Pages describing removed modules were deleted. Where a removed plugin still
+> explains *why* something is the way it is, the reference is kept as history and
+> labelled as such.
+
 One page per module in `lua/ajay/`. Each page covers **what the module does**,
 **which settings are enabled and why**, and **every keymap it defines**.
 
@@ -19,6 +43,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 | [init.md](init.md) | `init.lua` | Entry point, leader keys, feature flags |
 | [options.md](options.md) | `options.lua` | Editor settings, clipboard, fold/cursor persistence |
 | [keymaps.md](keymaps.md) | `keymaps.lua` | Plugin-free mappings: windows, motion, run-file, CMake |
+| [whichkey.md](whichkey.md) | `whichkey.lua` | which-key prefix hints, and what `delay` is *not* |
 | [bigfile.md](bigfile.md) | `bigfile.lua` | Large-file protection — loaded eagerly, before plugins |
 | [compat.md](compat.md) | `compat.lua` | Running one config on both Neovim 0.11 and 0.12 |
 | [plugins.md](plugins.md) | `plugins.lua` | The lazy.nvim spec and every load trigger |
@@ -27,12 +52,10 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 
 | Page | Module | What it covers |
 |---|---|---|
-| [colorscheme.md](colorscheme.md) | `colorscheme.lua` | Catppuccin + integrations |
-| [dashboard.md](dashboard.md) | `dashboard.lua` | alpha-nvim start screen |
-| [neotree.md](neotree.md) | `neotree.lua` | File explorer |
+| [colorscheme.md](colorscheme.md) | `colorscheme.lua` | VS Code Dark+; the other themes are commented out, ready to uncomment |
 | [icons.md](icons.md) | `icons.lua` | Nerd Font glyphs defined by codepoint |
 | [transparency.md](transparency.md) | `transparency.lua` | Transparent-background toggle |
-| [qol.md](qol.md) | `plugins.lua` inline | lualine, indent guides, undotree, emmet, rainbow delimiters |
+| [qol.md](qol.md) | `plugins.lua` inline | lualine, indent guides, undotree, rainbow delimiters |
 
 ## Editing & language support
 
@@ -40,9 +63,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 |---|---|---|
 | [lsp.md](lsp.md) | `lsp.lua` | Mason, servers, diagnostics, shared `LspAttach`, CodeLens |
 | [cmp.md](cmp.md) | `cmp.lua` | Completion, LuaSnip, custom snippets |
-| [copilot.md](copilot.md) | `copilot.lua` | GitHub Copilot with persisted on/off |
 | [treesitter.md](treesitter.md) | `treesitter.lua` | Highlighting, indent, textobjects (`main` branch) |
-| [treesitter.md#where-am-i-tscontextlua](treesitter.md#where-am-i-tscontextlua) | `tscontext.lua` | Winbar breadcrumb showing the enclosing class/method, plus an opt-in sticky overlay |
 | [conform.md](conform.md) | `conform.lua` | Formatting and format-on-save |
 | [comment.md](comment.md) | `comment.lua` | Comment toggling and the `Ctrl+/` story |
 | [telescope.md](telescope.md) | `telescope.lua` | Fuzzy finder and all `<leader>f` mappings |
@@ -53,27 +74,23 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 | Page | Module | What it covers |
 |---|---|---|
 | [gitsigns.md](gitsigns.md) | `gitsigns.lua` | Gutter signs, hunk staging, blame |
-| [lazygit.md](lazygit.md) | `lazygit.lua` | LazyGit floating window |
 
 ## Debugging
 
 | Page | Module | What it covers |
 |---|---|---|
-| [dap.md](dap.md) | `dap.lua` | Python, JS/TS, Go, C/C++, Rust, Java debugging |
+| [dap.md](dap.md) | `dap.lua` | Python, Go, C/C++, Rust, Java debugging |
 
-## Java / Spring Boot
+## Java
 
 | Page | Module | What it covers |
 |---|---|---|
 | [jdtls.md](jdtls.md) | `jdtls.lua` | JDK discovery, Lombok, workspaces, Java refactors |
-| [springboot.md](springboot.md) | `springboot.lua` | Spring Initializr, run/build/test |
-| [java-creator.md](java-creator.md) | `java-creator.lua` | IntelliJ-style new-file GUI, 13 templates |
 
 ## Optional / diagnostic
 
 | Page | Module | What it covers |
 |---|---|---|
-| [jupyter.md](jupyter.md) | `jupyter.lua` | Molten notebook cells (opt-in) |
 | [doctor.md](doctor.md) | `doctor.lua` | `:AjayDoctor` |
 | [performance.md](performance.md) | — | Every speed decision in one place: startup, navigation, responsiveness |
 | [inactive-modules.md](inactive-modules.md) | — | Record of removed modules (`autoformat.lua`, `null-ls.lua`) and why |

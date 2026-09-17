@@ -1,107 +1,114 @@
-# `colorscheme.lua` — themes
+# `colorscheme.lua` — the theme
 
-A theme **registry** and switcher. Three themes are installed, your choice is
-remembered across restarts, and switching is one keypress.
+**One theme: VS Code Dark+** ([Mofiqul/vscode.nvim](https://github.com/Mofiqul/vscode.nvim)).
 
-| Theme | `:Theme` name | Background | lualine |
-|---|---|---|---|
-| **VS Code Dark+** *(default)* | `vscode` | `#1f1f1f` | `vscode` |
-| **IntelliJ Darcula** | `darcula` | `#2b2b2b` | `auto` |
-| Catppuccin Frappe | `catppuccin` | `#303447` | `catppuccin-frappe` |
-
-## Switching
-
-| Key / command | Action |
+| | |
 |---|---|
-| `<leader>tc` | Pick from a list (`vim.ui.select`) |
-| `<leader>tn` | Cycle to the next theme |
-| `:Theme` | Same picker |
-| `:Theme vscode` | Apply directly (tab-completes) |
-| `:ThemeNext` | Cycle |
+| Background | `#1f1f1f` |
+| lualine theme | `vscode` |
+| Load | `lazy = false`, `priority = 1000` — a colorscheme must be applied before anything renders |
 
-The choice is written to `stdpath("data")/colorscheme_state` — **outside this
-git repo**, so it follows the machine rather than the config. Same one-word
-state-file pattern as the [Copilot](copilot.md) and
-[format-on-save](conform.md) toggles.
+## The switcher is gone
 
-A theme name in that file that no longer exists in the registry falls back to
-the default instead of failing at startup.
+This file used to be a **registry** of three themes with `:Theme`,
+`:ThemeNext`, `<leader>tc` / `<leader>tn`, and the choice persisted to
+`stdpath("data")/colorscheme_state`.
 
-## Why a registry
+All of it is removed. Three themes were installed and eagerly loaded —
+a colorscheme cannot lazy-load without a visible flash — to support switching
+that did not happen in practice. Darcula and Catppuccin are commented out in
+both `plugins.lua` and this module rather than deleted, so turning one back on
+is an uncomment, not an archaeology exercise.
 
-This file used to be a side-effect script: it ran `catppuccin.setup()` at
-require time and ended with `vim.cmd.colorscheme("catppuccin-frappe")`.
-Switching meant editing it. It is now a [Shape A module](api.md) exposing
-`apply` / `cycle` / `pick` / `current`, and everything else reads from one
-table — lualine, transparency, the picker and the persisted state.
+`<leader>fC` still opens Telescope's colorscheme picker with live preview. It
+lists whatever is installed and does not persist anything.
 
-### Adding a theme
+## Switching themes
 
-1. Add the plugin as a **dependency of the catppuccin spec** in
-   [plugins.md](plugins.md) — dependencies, not a sibling spec. lazy.nvim
-   loads a plugin's dependencies *before* the plugin itself, so the theme is
-   on the runtimepath by the time this module's `setup()` runs. As a sibling
-   it would need a higher `priority` than catppuccin's 1000, and
-   `require(...)` would fail on the first startup after a switch.
-2. Add an entry to `M.themes`:
+**Two edits, both required.** Step 1 puts the plugin on the runtimepath; step 2
+calls into it. Doing only one gets you either a dead `require` or an unused
+plugin.
 
-```lua
-{
-  name = "mytheme",
-  label = "My Theme",
-  lualine = "mytheme",        -- or "auto" if it ships none
-  native_transparency = true, -- does it have its own transparent option?
-  apply = function(transparent)
-    require("mytheme").setup({ transparent = transparent })
-    vim.cmd.colorscheme("mytheme")
-  end,
-}
-```
+1. In `plugins.lua`, uncomment the theme's entry in the colorscheme spec's
+   `dependencies`, then `:Lazy sync`.
+2. In `colorscheme.lua`, comment out the `require("vscode")` block in
+   `apply_theme()` and uncomment the block for the theme you want.
+3. Point `M.lualine_theme()` at the matching lualine theme name — the commented
+   blocks each name theirs.
 
-Nothing else needs changing.
+### Why `dependencies` and not a sibling spec
+
+Load order, not tidiness. lazy.nvim loads a plugin's dependencies **before** the
+plugin itself, so the theme is on the runtimepath by the time this spec's
+`config` calls into `colorscheme.lua`. As a sibling spec it would need a higher
+`priority` than this one's 1000, and `require(...)` would fail on the first
+startup after a switch.
 
 ## Transparency
 
-`<leader>tt` still toggles it ([transparency.md](transparency.md)), and it now
-works on **all three** themes — verified, `Normal` loses its background on each.
+`<leader>tt` / `:ToggleTransparency` — see [transparency.md](transparency.md).
+The flag is read fresh on every rebuild, because vscode.nvim (like most themes)
+bakes the choice in at `setup()` time. That is why toggling re-runs the whole
+theme rather than patching highlight groups.
 
-Two mechanisms, picked per theme by `native_transparency`:
+> ### Fixed bug: transparency was one-way
+>
+> `<leader>tt` turned transparency **on** correctly and could never turn it back
+> **off** — the background stayed cleared until you restarted Neovim.
+>
+> The bug is in vscode.nvim. Its `config.setup()` does:
+>
+> ```lua
+> if config.opts.transparent then
+>     config.opts.color_overrides.vscBack = 'NONE'
+> end
+> ```
+>
+> It sets `vscBack = 'NONE'` when transparent and **never clears it** when
+> transparent goes back to `false`. Worse, `config.opts` is built with a
+> *shallow* `vim.tbl_extend`, so when the caller passes no `color_overrides`
+> that table **is the plugin's own `defaults` table** — the write poisons
+> `defaults` for the rest of the session and every later `setup()` call
+> inherits `vscBack = 'NONE'`.
+>
+> Fix: pass a fresh `color_overrides = {}` on every call, which scopes the
+> plugin's mutation to that call. Verified toggling on→off→on→off restores the
+> background every time.
 
-- **VS Code Dark+ and Catppuccin** implement it themselves. They are simply
-  told, and they handle every group they own, including ones added later.
-- **Darcula has no such option.** The fallback **computes** the affected set:
-  every highlight group whose background currently equals `Normal`'s is, by
-  definition, painting the editor background, so clearing it is correct
-  regardless of which plugin defined it. Linked groups are skipped — re-setting
-  them would break the link and freeze them at today's colours.
+### `strip_backgrounds()` — the fallback
 
-> This is deliberately **not** the hand-written list of ~20 highlight groups
-> this config deleted once before. That list drifted out of date the moment a
-> plugin was added; a computed set cannot.
+Kept even though vscode.nvim does not need it, because Darcula does: a theme
+with no native transparency support needs its backgrounds cleared by hand.
 
-Transparency is applied by *rebuilding* the theme rather than patching
-highlights after the fact, because most themes bake the choice in at `setup()`
-time — the flag has to be read while the theme is being constructed.
+It **computes** the set rather than hard-coding it. Every highlight group whose
+background currently equals `Normal`'s background is, by definition, painting
+the editor background, so clearing it is correct no matter which plugin defined
+it. Linked groups are skipped — re-setting one would break the link and freeze
+it at today's colours.
+
+> This replaced a hand-written list of ~20 groups (`Normal`, `NormalFloat`,
+> `SignColumn`, …) that drifted out of date the moment a plugin was added.
 
 ## lualine
 
-lualine caches its options, so a switch re-runs `lualine.setup()` with the new
-theme. The options passed there mirror the lualine spec in
-[plugins.md](plugins.md) — passing only `theme` would silently reset
-`icons_enabled` and `globalstatus` to lualine's own defaults.
+`M.lualine_theme()` returns `"vscode"`. The lualine spec in `plugins.lua` calls
+it for the **first draw**, so it must not depend on anything `setup()` does.
 
-On the very first draw, before this module's `setup()` has necessarily run,
-the lualine spec calls `colorscheme.lualine_theme()`, which reads the persisted
-choice directly.
+`refresh_lualine()` re-runs `lualine.setup()` after a transparency toggle, and
+only if lualine is **already loaded**.
 
-> **Previous bug, still worth knowing:** the lualine theme was once set to
-> `"catppuccin"`, which is not a lualine theme — catppuccin ships one file per
-> *flavour*. lualine silently fell back to `auto` and warned once per launch.
-> Same class as the old `colorscheme("catppuccin-nvim")`, which does not exist
-> either and left Neovim on `default`.
+> *Historic bug:* it ran on every apply — including the one at startup — and
+> `require("lualine")` forces lazy.nvim to load a plugin whose spec is
+> `event = "VeryLazy"`. That cost ~3.1 ms of eager startup for a statusline
+> explicitly allowed to appear a frame late. Skipping is safe: the spec already
+> asks this module for the right theme, so lualine comes up correct on its own.
+
+> *Historic bug:* the theme name was once `"catppuccin"`, which is not a lualine
+> theme — catppuccin ships one file per flavour. lualine silently fell back to
+> `auto` and warned on every launch.
 
 ## Related
 
-- [transparency.md](transparency.md) — the `<leader>tt` toggle
-- [plugins.md](plugins.md) — the specs and load order
-- [api.md](api.md) — module shapes, and the rest of the extension points
+- [transparency.md](transparency.md) — the toggle that calls `reapply()`
+- [qol.md](qol.md) — lualine
+- [plugins.md](plugins.md) — the spec and its load order

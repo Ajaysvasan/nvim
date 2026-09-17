@@ -8,7 +8,6 @@ removed and why, so it does not get re-added by accident.
 | `autoformat.lua` | **Deleted** — superseded by [conform](conform.md) |
 | `null-ls.lua` | **Deleted** — null-ls is archived upstream |
 | `transparency.lua` | **Now live** — rewritten, see [transparency.md](transparency.md) |
-| `java-creator.lua` | **Now live** — wired to the jdtls spec, see [java-creator.md](java-creator.md) |
 
 Both deletions are recoverable from git:
 

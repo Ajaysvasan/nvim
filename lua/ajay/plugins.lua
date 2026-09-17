@@ -14,8 +14,6 @@ end
 
 vim.opt.rtp:prepend(lazypath)
 
-local notebook = vim.g.enable_notebook == true
-
 -- Calling require("x").setup() directly gives you "attempt to index a
 -- boolean value" when the module is truncated or fails to return its
 -- table -- a message that says nothing about which file or why.
@@ -62,25 +60,26 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- COLORSCHEME  (must be eager + high priority)
   -- ══════════════════════════════════════════════════════════════════
-  -- Three themes are installed; colorscheme.lua decides which is active and
-  -- remembers your choice across restarts.
+  -- ONE theme is installed: VS Code Dark+. The registry and switcher
+  -- (:Theme, <leader>tc/<leader>tn) are gone -- see ajay.colorscheme.
   --
-  -- The other two are DEPENDENCIES rather than sibling specs, and that is
-  -- load order, not tidiness: lazy.nvim runs a plugin's dependencies before
-  -- the plugin itself, so both are on the runtimepath by the time this
-  -- `config` calls into colorscheme.lua. As sibling specs they would have
-  -- needed a higher `priority` than this one -- catppuccin is 1000 -- and
-  -- `require("vscode")` would otherwise fail on the very first startup
-  -- after a switch.
+  -- TO SWITCH: uncomment a theme in `dependencies` below AND the matching
+  -- block in colorscheme.lua's apply_theme(), then :Lazy sync.
+  --
+  -- They belong in `dependencies` rather than as sibling specs, and that
+  -- is load order, not tidiness: lazy.nvim runs a plugin's dependencies
+  -- before the plugin itself, so the theme is on the runtimepath by the
+  -- time this `config` calls into colorscheme.lua. As a sibling spec it
+  -- would need a higher `priority` than this one, and `require(...)`
+  -- would otherwise fail on the very first startup after a switch.
   {
-    "catppuccin/nvim",
-    name = "catppuccin",
+    "Mofiqul/vscode.nvim",
     lazy = false,
     priority = 1000,
-    dependencies = {
-      { "Mofiqul/vscode.nvim", lazy = false },
-      { "xiantang/darcula-dark.nvim", lazy = false },
-    },
+    -- dependencies = {
+    --   { "catppuccin/nvim", name = "catppuccin", lazy = false },
+    --   { "xiantang/darcula-dark.nvim", lazy = false },
+    -- },
     config = function()
       setup_module("ajay.colorscheme")
       -- Registers :ToggleTransparency and <leader>tt. Registration only --
@@ -89,37 +88,8 @@ require("lazy").setup({
     end,
   },
 
-  -- ══════════════════════════════════════════════════════════════════
-  -- DASHBOARD
-  -- ══════════════════════════════════════════════════════════════════
-  {
-    "goolord/alpha-nvim",
-    event = "VimEnter",
-    dependencies = { "nvim-tree/nvim-web-devicons" },
-    config = function()
-      setup_module("ajay.dashboard")
-    end,
-  },
-
-  -- ══════════════════════════════════════════════════════════════════
-  -- FILE TREE
-  -- ══════════════════════════════════════════════════════════════════
-  {
-    "nvim-neo-tree/neo-tree.nvim",
-    branch = "v3.x",
-    cmd = "Neotree",
-    keys = {
-      { "<C-n>", desc = "Toggle/Focus Neo-tree" },
-    },
-    dependencies = {
-      "nvim-lua/plenary.nvim",
-      "nvim-tree/nvim-web-devicons",
-      "MunifTanjim/nui.nvim",
-    },
-    config = function()
-      setup_module("ajay.neotree")
-    end,
-  },
+  -- No file-tree plugin on this branch. netrw (Neovim's built-in) is
+  -- re-enabled in the `performance.rtp` list at the bottom -- `:Ex`.
 
   -- ══════════════════════════════════════════════════════════════════
   -- TELESCOPE
@@ -227,7 +197,7 @@ require("lazy").setup({
     --
     -- :MasonSync is the one that actually stung: it is the "go install
     -- whatever tooling is missing" command, so the moment you most want it
-    -- is a cold editor on the dashboard -- exactly where it did not exist.
+    -- is a cold editor with no file open -- exactly where it did not exist.
     -- Same bug as :ToggleFormatOnSave and :FormatStatus in the conform spec.
     cmd = { "MasonSync", "ToggleCodeLens", "ToggleInlayHints" },
     dependencies = { "hrsh7th/cmp-nvim-lsp" },
@@ -239,16 +209,10 @@ require("lazy").setup({
     "mfussenegger/nvim-jdtls",
     ft = "java",
     config = function()
+      -- jdtls only. The IntelliJ-style "New Java Class" GUI
+      -- (java-creator.lua, ~1100 lines) and the Spring Boot runner
+      -- (springboot.lua) are gone on this branch -- see docs/README.md.
       setup_module("ajay.jdtls")
-      -- IntelliJ-style "New Java Class" GUI: <leader>jN / :JavaNew.
-      -- Loaded here rather than eagerly -- it is ~1100 lines and only
-      -- meaningful once you are in a Java project.
-      setup_module("ajay.java-creator")
-      -- Spring Boot commands live alongside Java. This is the wiring that
-      -- was missing: the old init.lua did `require("ajay.springboot")`,
-      -- which only returns the module table -- setup() was never called,
-      -- so :SpringBootRun and <leader>sr never existed on either machine.
-      setup_module("ajay.springboot")
     end,
   },
 
@@ -272,34 +236,6 @@ require("lazy").setup({
     },
     config = function()
       require("ajay.cmp")
-    end,
-  },
-
-  -- ══════════════════════════════════════════════════════════════════
-  -- COPILOT
-  -- ══════════════════════════════════════════════════════════════════
-  {
-    "zbirenbaum/copilot.lua",
-    cmd = "Copilot",
-    event = "InsertEnter",
-    -- InsertEnter covers most of it, but these are normal-mode keys you may
-    -- well press before typing anything in a session -- "is Copilot on?"
-    -- being the obvious one.
-    keys = {
-      { "<leader>ct", desc = "Toggle Copilot" },
-      { "<leader>cs", desc = "Copilot status" },
-      { "<leader>cp", desc = "Copilot panel" },
-    },
-    config = function()
-      setup_module("ajay.copilot")
-    end,
-  },
-  {
-    "zbirenbaum/copilot-cmp",
-    dependencies = { "zbirenbaum/copilot.lua" },
-    event = "InsertEnter",
-    config = function()
-      require("copilot_cmp").setup()
     end,
   },
 
@@ -329,27 +265,46 @@ require("lazy").setup({
   {
     "HiPhish/rainbow-delimiters.nvim",
     event = { "BufReadPost", "BufNewFile" },
-  },
-  -- ── STICKY CONTEXT ────────────────────────────────────────────────
-  -- Pins the enclosing class/method signature to the top of the window,
-  -- like IntelliJ's sticky lines. Configured in ajay.treesitter.
-  {
-    "nvim-treesitter/nvim-treesitter-context",
-    event = { "BufReadPost", "BufNewFile" },
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      -- Breadcrumbs for the WINBAR. treesitter-context renders as a float
-      -- OVER the buffer, so it necessarily hides the top lines of code;
-      -- the winbar is its own row and hides nothing. See ajay.tscontext.
-      "SmiteshP/nvim-navic",
-    },
-    cmd = { "TSContextEnable", "TSContextDisable", "TSContextToggle" },
-    keys = { { "<leader>tC", desc = "Toggle sticky context" } },
-    config = function()
-      setup_module("ajay.tscontext")
+    -- `init`, not `config`: this must be set BEFORE the plugin's own
+    -- FileType autocmd runs, and that autocmd is registered the moment the
+    -- plugin loads.
+    init = function()
+      -- SIZE GATE. Without this, rainbow-delimiters attaches to any buffer
+      -- with a treesitter parser, at any size, and its attach() calls
+      --
+      --   parser:parse(nil)        -- nil range = parse the WHOLE buffer
+      --
+      -- which is the one thing treesitter is normally careful never to do.
+      -- The highlighter parses only the visible range and extends lazily;
+      -- this forces the entire file through the parser synchronously, then
+      -- walks the resulting tree to place an extmark on every delimiter.
+      --
+      -- Measured on kafka's GroupMetadataManagerTest.java (1.42 MB, 30,692
+      -- lines): 2.09 s wall / 1.90 s CPU / 159 MB RSS with it, 0.20 s /
+      -- 0.07 s / 40 MB without. It also costs ~3.7 ms on EVERY keystroke,
+      -- because the query re-runs on change.
+      --
+      -- Cost tracks delimiter density, so lines is the right proxy, not
+      -- bytes: a 0.83 MB C lookup table is free, a 1.42 MB nested Java test
+      -- file is not. Measured deltas: ~0 at 1k lines, +90 ms at 2.4k,
+      -- +220 ms at 3.3k, +1220 ms at 13.8k, +2130 ms at 30.7k. 5000 keeps
+      -- the worst case around a quarter second.
+      --
+      -- Only `condition` is set. rainbow's config falls back to its own
+      -- defaults for strategy/query/priority/highlight (see get_nested in
+      -- its config.lua), so this does not clobber anything else.
+      vim.g.rainbow_delimiters = {
+        condition = function(bufnr)
+          -- Protected buffers already skip it via treesitter being stopped,
+          -- but say so explicitly rather than relying on that side effect.
+          if vim.b[bufnr].bigfile then
+            return false
+          end
+          return vim.api.nvim_buf_line_count(bufnr) <= 5000
+        end,
+      }
     end,
   },
-
   -- ══════════════════════════════════════════════════════════════════
   -- FORMATTING  (conform only — null-ls and autoformat.lua are gone)
   -- ══════════════════════════════════════════════════════════════════
@@ -386,26 +341,25 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- GIT
   -- ══════════════════════════════════════════════════════════════════
+  -- ══════════════════════════════════════════════════════════════════
+  -- WHICH-KEY  (prefix hints)
+  -- ══════════════════════════════════════════════════════════════════
+  -- VeryLazy, not a key trigger: it has to be listening BEFORE you press
+  -- a prefix, and lazy-loading it on <leader> would swallow the first
+  -- press of the session.
+  {
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    config = function()
+      setup_module("ajay.whichkey")
+    end,
+  },
+
   {
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
     config = function()
       setup_module("ajay.gitsigns")
-    end,
-  },
-  {
-    "kdheepak/lazygit.nvim",
-    cmd = { "LazyGit", "LazyGitConfig", "LazyGitCurrentFile", "LazyGitFilter", "LazyGitFilterCurrentFile" },
-    keys = {
-      { "<leader>gg", desc = "Open LazyGit" },
-      { "<leader>gf", desc = "LazyGit current file" },
-      { "<leader>gC", desc = "LazyGit config" },
-      { "<leader>gl", desc = "LazyGit filter" },
-      { "<leader>gL", desc = "LazyGit filter current file" },
-    },
-    dependencies = { "nvim-lua/plenary.nvim" },
-    config = function()
-      setup_module("ajay.lazygit")
     end,
   },
 
@@ -578,100 +532,16 @@ require("lazy").setup({
       { "<leader>u", vim.cmd.UndotreeToggle, desc = "Toggle Undo Tree" },
     },
   },
-  -- ── SESSIONS ──────────────────────────────────────────────────────
-  -- Restores the buffers, windows and cwd you had open.
+  -- No session plugin on this branch.
   --
-  -- NOTE ON HARPOON: harpoon2 already persists on its own, to
-  -- stdpath("data")/harpoon/<hash>.json, and does NOT need a session
-  -- plugin. If your marks ever look "lost", it is almost certainly the
-  -- cwd: harpoon.lua keys each list by `vim.uv.cwd()`, so `nvim` started
-  -- from $HOME sees a different list than `nvim` started from the project
-  -- root. Sessions help here too, because restoring one restores the cwd.
+  -- harpoon2 already persists its own list to
+  -- stdpath("data")/harpoon/<hash>.json, keyed by cwd -- which is the
+  -- working set you actually curate (add what you are editing, clear it
+  -- when done). persistence.nvim restored buffers/windows/cwd on top of
+  -- that and duplicated the only part that mattered.
   --
-  -- Deliberately NOT auto-restored on startup: that would fight the
-  -- dashboard (alpha) for the first screen. Restore explicitly with
-  -- <leader>Ss, or the "Restore Session" button on the dashboard.
-  {
-    "folke/persistence.nvim",
-    event = "BufReadPre",
-    opts = {
-      -- ── DO NOT SAVE WINDOWS THAT CANNOT BE RESTORED ──────────────
-      --
-      -- `:mksession` records every window, including plugin panes whose
-      -- buffers are generated at runtime and have no file behind them.
-      -- Restoring one does NOT bring the plugin back -- Vim just recreates
-      -- a buffer with the same NAME, so a saved neo-tree came back as
-      --
-      --   [ft=  bt=  name=neo-tree filesystem [1]]
-      --
-      -- an empty, *normal* buffer wearing neo-tree's name. That is the
-      -- "file tree does not load" symptom, and it is mildly dangerous too:
-      -- because `buftype` is empty, a stray `:w` in that pane would try to
-      -- write a real file literally called "neo-tree filesystem [1]".
-      --
-      -- So close them before the session is written. They are all cheap to
-      -- reopen (<C-n> for the tree) and none of them holds state worth
-      -- persisting.
-      pre_save = function()
-        local skip_ft = {
-          ["neo-tree"] = true,
-          ["neo-tree-popup"] = true,
-          ["alpha"] = true,
-          ["undotree"] = true,
-          ["diff"] = true, -- undotree's diff pane
-          ["dap-repl"] = true,
-          ["dapui_scopes"] = true,
-          ["dapui_breakpoints"] = true,
-          ["dapui_stacks"] = true,
-          ["dapui_watches"] = true,
-          ["dapui_console"] = true,
-          ["Glance"] = true,
-          ["glancelist"] = true,
-          ["lazygit"] = true,
-          ["qf"] = true,
-          ["help"] = true,
-        }
-        for _, win in ipairs(vim.api.nvim_list_wins()) do
-          local ok, buf = pcall(vim.api.nvim_win_get_buf, win)
-          if ok then
-            -- Terminals go too. A Spring Boot task (springboot.lua) is a
-            -- live job; restoring it would resurrect a dead shell, not the
-            -- application, and its scrollback is gone either way.
-            if skip_ft[vim.bo[buf].filetype] or vim.bo[buf].buftype == "terminal" then
-              pcall(vim.api.nvim_win_close, win, true)
-            end
-          end
-        end
-      end,
-    },
-    -- <leader>S, not the <leader>q* the plugin's own README suggests:
-    -- <leader>q is ":q<CR>" in keymaps.lua, and a complete mapping that is
-    -- also a prefix stalls for 'timeoutlen' before firing. Quitting is far
-    -- too common to make it wait. See docs/keymap-reference.md.
-    keys = {
-      {
-        "<leader>Ss",
-        function()
-          require("persistence").load()
-        end,
-        desc = "Session: restore for this directory",
-      },
-      {
-        "<leader>Sl",
-        function()
-          require("persistence").load({ last = true })
-        end,
-        desc = "Session: restore last used",
-      },
-      {
-        "<leader>Sd",
-        function()
-          require("persistence").stop()
-        end,
-        desc = "Session: stop saving this one",
-      },
-    },
-  },
+  -- If harpoon marks ever look "lost": it is the cwd. `nvim` started from
+  -- $HOME sees a different list than `nvim` started from the project root.
 
   -- ── IntelliJ-STYLE PEEK / FIND USAGES ─────────────────────────────
   -- `vim.lsp.buf.references()` dumps into the quickfix list: a flat list
@@ -702,146 +572,15 @@ require("lazy").setup({
       },
     },
   },
-
-  -- ── LOG FILES ─────────────────────────────────────────────────────
-  -- Syntax highlighting for plain log output: levels (ERROR/WARN/INFO),
-  -- timestamps, quoted strings, URLs, IPs and Java stack traces.
-  --
-  -- Worth having because Neovim detects NOTHING for a .log file --
-  -- verified, `filetype` and `syntax` both come back empty, so a Spring
-  -- Boot or kafka log is undifferentiated white text and an ERROR line
-  -- looks exactly like an INFO line.
-  --
-  -- Pure syntax: no LSP, no treesitter parser, nothing to compile.
-  {
-    "fei6409/log-highlight.nvim",
-    ft = "log",
-    init = function()
-      -- MUST be `init` (eager), not `config` (on-load): the `ft = "log"`
-      -- trigger above can only fire once something has actually SET the
-      -- filetype to "log", and core Neovim never does. Registering the
-      -- patterns here is what makes the lazy trigger reachable at all.
-      --
-      -- Deliberately conservative -- extension matches only. A tempting
-      -- `.*/logs?/.*` rule would also claim the .java and .xml files that
-      -- live under a logs/ directory in plenty of projects.
-      vim.filetype.add({
-        extension = { log = "log" },
-        filename = { log = "log", logs = "log" },
-        pattern = {
-          -- Rotated logs: app.log.1, app.log.2024-01-01
-          [".*%.log%.[%w%-%.]+"] = "log",
-        },
-      })
-    end,
-    config = function()
-      require("log-highlight").setup({})
-    end,
-  },
-  {
-    -- NOT a standalone expander. wrap_with_abbreviation sends an
-    -- `emmet/expandAbbreviation` LSP request and silently returns if
-    -- nothing answers, so this plugin is inert without
-    -- emmet-language-server -- which lsp.lua now installs and enables.
-    --
-    -- The filetype list is emmet-language-server's own, minus the
-    -- templating languages this config has no other support for. It used
-    -- to omit htmlangular, scss and less, so the keymap did not even
-    -- exist in three filetypes where the server does attach.
-    "olrtg/nvim-emmet",
-    ft = {
-      "html",
-      "htmlangular",
-      "css",
-      "scss",
-      "less",
-      "javascriptreact",
-      "typescriptreact",
-      "vue",
-      "svelte",
-    },
-    config = function()
-      -- <leader>le, not <leader>xe: <leader>x is `:wq` in keymaps.lua, and a
-      -- complete mapping that is also a prefix stalls for 'timeoutlen'
-      -- before firing. See the block in lsp.lua's LspAttach -- the
-      -- diagnostics and workspace maps moved off <leader>x/<leader>w for
-      -- the same reason, and this was the third child of <leader>x.
-      vim.keymap.set({ "n", "v" }, "<leader>le", require("nvim-emmet").wrap_with_abbreviation, {
-        desc = "Emmet wrap with abbreviation",
-      })
-    end,
-  },
-
-  -- ══════════════════════════════════════════════════════════════════
-  -- NOTEBOOK STACK  (opt-in via vim.g.enable_notebook)
-  --
-  -- image.nvim's `magick` dependency is a LuaRock. lazy.nvim bootstraps
-  -- hererocks + luarocks to build it, and that build needs ImageMagick's
-  -- C headers. On a fresh macOS box that build fails, and because these
-  -- are non-lazy specs the failure blocks startup. Gated off by default.
-  -- ══════════════════════════════════════════════════════════════════
-  {
-    "GCBallesteros/jupytext.nvim",
-    enabled = notebook,
-    lazy = false, -- must be loaded before a .ipynb is opened
-    opts = {
-      style = "percent",
-      output_extension = "auto",
-      force_ft = nil,
-      custom_language_formatting = {},
-    },
-  },
-  {
-    "3rd/image.nvim",
-    enabled = notebook,
-    ft = { "markdown", "python", "ipynb" },
-    build = false, -- do not let it try a rockspec build
-    dependencies = { "leafo/magick" },
-    opts = {
-      backend = "kitty",
-      integrations = {
-        markdown = {
-          enabled = true,
-          clear_in_insert_mode = false,
-          download_remote_images = true,
-          only_render_image_at_cursor = false,
-        },
-      },
-      max_width_window_percentage = nil,
-      max_height_window_percentage = 50,
-      kitty_method = "normal",
-    },
-  },
-  {
-    "benlubas/molten-nvim",
-    enabled = notebook,
-    version = "^1.0.0",
-    build = ":UpdateRemotePlugins",
-    ft = { "python", "ipynb", "markdown" },
-    cmd = { "MoltenInit", "MoltenEvaluateLine", "MoltenEvaluateOperator" },
-    init = function()
-      vim.g.molten_image_provider = "image.nvim"
-      vim.g.molten_output_win_max_height = 20
-      vim.g.molten_auto_open_output = false
-      vim.g.molten_wrap_output = true
-      vim.g.molten_virt_text_output = true
-    end,
-    config = function()
-      setup_module("ajay.jupyter")
-    end,
-  },
 }, {
   -- ══════════════════════════════════════════════════════════════════
   -- LAZY.NVIM OPTIONS
   -- ══════════════════════════════════════════════════════════════════
-  install = { colorscheme = { "vscode", "catppuccin", "habamax" } },
+  install = { colorscheme = { "vscode", "habamax" } },
   checker = { enabled = false },
   change_detection = { notify = false },
-  rocks = {
-    -- Only bootstrap hererocks when the notebook stack is actually on.
-    enabled = notebook,
-    hererocks = notebook,
-  },
+  -- No luarocks bootstrap: nothing here needs it.
+  rocks = { enabled = false, hererocks = false },
   performance = {
     rtp = {
       disabled_plugins = {
@@ -850,11 +589,11 @@ require("lazy").setup({
         "tohtml",
         "tutor",
         "zipPlugin",
-        "netrwPlugin",
-        -- "rplugin" is appended below only when notebooks are OFF.
-        -- molten-nvim is a Python remote plugin and needs the rplugin
-        -- host, so disabling it would break :MoltenInit silently.
-        unpack(notebook and {} or { "rplugin" }),
+        -- netrwPlugin is NOT disabled here any more. neo-tree used to be
+        -- the file browser, so netrw was dead weight; with neo-tree gone
+        -- it is the only directory browser left, and it ships with
+        -- Neovim. `:Ex` opens the current file's directory.
+        "rplugin",
       },
     },
   },

@@ -39,20 +39,11 @@ end
 --   full interpreter to test).
 --
 -- None of this config's Python tooling is a pynvim remote-plugin host:
--- pyright, debugpy, black and isort are all independent LSP/DAP/CLI
--- subprocesses. The only thing that legitimately needs :python3 is
--- molten-nvim, and only when vim.g.enable_notebook is true -- so keep the
--- provider live (but point it at ONE interpreter instead of letting it
--- scan) in that case, and switch it off entirely otherwise. Ruby has no
--- consumer here either way.
-if vim.g.enable_notebook then
-  local py3 = vim.fn.exepath("python3")
-  if py3 ~= "" then
-    vim.g.python3_host_prog = py3
-  end
-else
-  vim.g.loaded_python3_provider = 0
-end
+-- pyright, debugpy, black, isort and ruff are all independent LSP/DAP/CLI
+-- subprocesses. molten-nvim was the one thing that genuinely needed
+-- :python3, and it is gone on this branch -- so the provider is simply
+-- off. Ruby never had a consumer here either.
+vim.g.loaded_python3_provider = 0
 vim.g.loaded_ruby_provider = 0
 
 -- UI
@@ -157,12 +148,14 @@ end)
 -- and two of those actively break session restore for this config:
 --
 --   blank     saves EMPTY windows, which come back as stray splits
---   terminal  tries to restore terminal buffers -- a Spring Boot task
---             (springboot.lua) would be resurrected as a dead shell, not
---             a running application, with its scrollback gone regardless
+--   terminal  tries to restore terminal buffers -- resurrected as a dead
+--             shell, not a running process, scrollback gone regardless
 --
 -- `help` is dropped too: a restored help window is rarely what you meant
--- to reopen, and persistence.nvim's pre_save closes it anyway.
+-- to reopen.
+--
+-- No session plugin uses this on the minimal branch (harpoon is the
+-- working set). It still applies to a hand-run :mksession/:source.
 --
 -- What is left is the part worth keeping: which files were open, where you
 -- were, and the window geometry.

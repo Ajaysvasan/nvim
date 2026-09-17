@@ -171,7 +171,6 @@ cmp.setup({
   }),
 
   sources = cmp.config.sources({
-    { name = "copilot", priority = 1100 }, -- AI suggestions first!
     { name = "nvim_lsp", priority = 1000 },
     { name = "luasnip", priority = 750 },
     { name = "path", priority = 500 },
@@ -202,7 +201,6 @@ cmp.setup({
   formatting = {
     format = function(entry, vim_item)
       vim_item.menu = ({
-        copilot = "[AI]",
         nvim_lsp = "[LSP]",
         luasnip = "[Snip]",
         buffer = "[Buf]",

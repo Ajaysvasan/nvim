@@ -29,15 +29,14 @@ in `init.lua` degrades the whole UI to readable ASCII instead of tofu boxes.
 ## Exported tables
 
 Every consumer requires this module through `pcall` with its own inline ASCII
-fallback — see [lsp.md](lsp.md), [neotree.md](neotree.md), [dap.md](dap.md).
+fallback — see [lsp.md](lsp.md) and [dap.md](dap.md).
 A missing or broken `icons.lua` degrades the UI to ASCII; it never takes down a
 language server, the file tree, or the debugger.
 
 | Table           | Consumed by               | Contains                                                                                                                     |
 | --------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `M.diagnostics` | [lsp.lua](lsp.md)         | `ERROR` `WARN` `INFO` `HINT` — with ASCII fallbacks `E` `W` `I` `H`                                                          |
-| `M.tree`        | [neotree.lua](neotree.md) | folder open/closed/empty, default file, expander arrows                                                                      |
-| `M.git`         | [neotree.lua](neotree.md) | added, modified, deleted, renamed, untracked, ignored, unstaged, staged, conflict                                            |
+| `M.git`         | [gitsigns.lua](gitsigns.md) | added, modified, deleted, renamed, untracked, ignored, unstaged, staged, conflict |
 | `M.dap`         | [dap.lua](dap.md)         | breakpoint, conditional breakpoint, log point, stopped, rejected, and the dap-ui control buttons (pause/play/step/terminate) |
 
 Each entry is commented with its `nf-fa-*` name from the

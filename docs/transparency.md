@@ -3,7 +3,7 @@
 Lets your terminal's own background — wallpaper, blur, whatever — show through
 Neovim. **Off by default**; nothing changes until you press `<leader>tt`.
 
-Registered from the catppuccin spec in `plugins.lua`, so it is available from
+Registered from the colorscheme spec in `plugins.lua`, so it is available from
 the moment the colorscheme loads. Setup is registration only (one command, one
 keymap) — it costs effectively nothing at startup.
 
@@ -30,7 +30,7 @@ fails the flag is rolled back so it never disagrees with what is on screen.
 
 The old version had two real problems:
 
-1. **It hand-listed ~20 highlight groups** (`Normal`, `NormalFloat`, `NeoTree*`,
+1. **It hand-listed ~20 highlight groups** (`Normal`, `NormalFloat`,
    `Telescope*`, `WhichKeyFloat`…) and cleared `guibg` on each. That list drifts
    out of date the moment you add a plugin, and it fights `:colorscheme`, which
    resets every group.

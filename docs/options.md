@@ -142,7 +142,7 @@ Neither is set by default:
 
 | Global | Effect |
 |---|---|
-| `vim.g.jdtls_java_home` | Point [jdtls](jdtls.md) at a specific JDK, skipping all auto-detection |
+| `vim.g.jdtls_java_home` | Override `$JAVA_HOME` for [jdtls](jdtls.md) — otherwise `$JAVA_HOME` is used |
 | `vim.g.ts_disabled_langs` | Skip [treesitter](treesitter.md) for the given languages and fall back to Vim regex syntax, e.g. `{ markdown = true, markdown_inline = true }` |
 
 ## Keymaps

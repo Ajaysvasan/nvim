@@ -65,15 +65,14 @@ Set these in `init.lua` **before** `require("ajay.plugins")`.
 | Flag | Default | Effect |
 |---|---|---|
 | `vim.g.have_nerd_font` | `true` | `false` swaps every glyph for ASCII ([icons.md](icons.md)) and disables lualine icons |
-| `vim.g.enable_notebook` | `false` | Enables the molten/image.nvim/jupytext stack ([jupyter.md](jupyter.md)). Off by default because it needs luarocks + ImageMagick and is the #1 fresh-machine build failure |
-| `vim.g.jdtls_java_home` | *(auto)* | Skip JDK autodetection entirely and use this JDK to run jdtls ([jdtls.md](jdtls.md)) |
+| `vim.g.jdtls_java_home` | *(`$JAVA_HOME`)* | Override `$JAVA_HOME` for both the project runtime and the JVM that runs jdtls ([jdtls.md](jdtls.md)) |
 | `vim.g.ts_disabled_langs` | `{}` | `{ markdown = true }` falls back to Vim regex syntax for that language ([treesitter.md](treesitter.md)) |
 | `vim.g.codelens_off` | `false` | Global CodeLens kill switch (also `:ToggleCodeLens`) |
 | `vim.g.disable_autoformat` | *(from disk)* | Global format-on-save kill switch. **Restored from `stdpath("data")/format_on_save_state` at load** — prefer `:ToggleFormatOnSave`, which persists it ([conform.md](conform.md)) |
 | `vim.g.transparent_background` | `false` | Driven by `<leader>tt` / `:ToggleTransparency` ([transparency.md](transparency.md)) |
 
-Everything else the config sets (`mapleader`, `clipboard`, `loaded_*_provider`,
-`molten_*`, `lazygit_*`) is internal — changing it is fine, but it is
+Everything else the config sets (`mapleader`, `clipboard`, `loaded_*_provider`)
+is internal — changing it is fine, but it is
 configuration, not an API.
 
 ---
@@ -85,8 +84,9 @@ work, **honour `vim.b.bigfile`**.
 
 | Flag | Set by | Read by | Meaning |
 |---|---|---|---|
-| `vim.b.bigfile` | [bigfile.lua](bigfile.md) at `BufReadPre` | treesitter, lsp, cmp, jdtls, jupyter, options | This buffer is too large for per-keystroke work. **Do nothing expensive.** |
+| `vim.b.bigfile` | [bigfile.lua](bigfile.md) at `BufReadPre` | treesitter, lsp, cmp, jdtls, options | This buffer is too large for per-keystroke work. **Do nothing expensive.** |
 | `vim.b.disable_autoformat` | user / bigfile | conform | Skip format-on-save for this buffer only. **OR'd with the global** — `vim.g.disable_autoformat` wins, so clearing this does not re-enable formatting while the global is off ([conform.md](conform.md)) |
+| `vim.b.bigfile_no_lsp` | [bigfile.lua](bigfile.md) | lsp, jdtls | Stronger than `bigfile`: detach language servers too. Only set past `lsp_max_bytes` or on a pathological single-line file — a merely large file **keeps its LSP**. |
 | `vim.b.codelens_off` | bigfile | lsp | Never request code lenses here |
 | `vim.b.ajay_codelens_on` | `compat.codelens` | compat internal | 0.11 shim state — do not set by hand |
 
@@ -120,9 +120,8 @@ vim.lsp.config("gopls", { settings = { gopls = { staticcheck = true } } })
 ```
 
 > **Only override what needs overriding.** nvim-lspconfig already ships `cmd`,
-> `filetypes` and `root_markers` for all 414 servers. `ts_ls`, `eslint`, `html`,
-> `cssls`, `lemminx` and `emmet_language_server` have **no** override block here
-> and work fine. Hardcoding `cmd` is how a Mason binary that is not yet on
+> `filetypes` and `root_markers` for all 414 servers. `gopls` and
+> `rust_analyzer` have **no** override block here and work fine. Hardcoding `cmd` is how a Mason binary that is not yet on
 > `PATH` silently fails to start.
 
 > ⚠️ **The `fallback_bin` trap.** Startup decides whether a server is installed
@@ -219,16 +218,13 @@ is only for mappings needing **no plugin**.
 | | `codelens.enable/is_enabled` | 0.11↔0.12 CodeLens shim |
 | `ajay.icons` | `diagnostics` `tree` `git` `dap` | Glyph tables, built from codepoints |
 | | `preview()` | Render every glyph to check the font |
-| `ajay.jdtls` | `detected_jdks()` | Every JDK found, memoised + disk-cached |
-| `ajay.java-creator` | `open()` | The new-Java-file GUI |
-| `ajay.springboot` | `run_app()` `build_project()` `run_tests()` `create_project()` | |
+| `ajay.jdtls` | `detected_jdks()` | `$JAVA_HOME`, plus the fallback JVM if `$JAVA_HOME` is too old to run jdtls |
 | `ajay.transparency` | `toggle()` | |
 | `ajay.colorscheme` | `apply(name)` `cycle()` `pick()` | Switch theme; the choice persists |
 | | `current()` `lualine_theme()` | Active theme, and its matching lualine theme |
 | | `themes` | The registry — add a table here to add a theme ([colorscheme.md](colorscheme.md)) |
 | `ajay.bigfile` | `max_bytes` `max_line_length` | Thresholds — assign to change them |
 | `ajay.conform` | `detect_buf(bufnr)` | What this project's formatter setup resolves to ([conform.md](conform.md)) |
-| `ajay.tscontext` | `setup()` `winbar()` | Winbar breadcrumb + the opt-in sticky overlay ([treesitter.md](treesitter.md#where-am-i-tscontextlua)) |
 
 ### Prefer `compat.has` over version numbers
 
@@ -253,13 +249,13 @@ See [compat.md](compat.md).
 | `:Lazy profile` | What each plugin cost at startup |
 | `:ConformInfo` | Which formatters conform found for this buffer |
 | `:TSStatus` | Parser installed, highlighting on, duplicate parsers |
-| `:BigFileStatus` | Is this buffer gated, and why |
+| `:BigFile status` | Is this buffer gated, and why |
 | `:FormatStatus` | Format-on-save state, global + buffer + **saved on disk** |
 | `:JdtlsLog` | Eclipse-side log — OOMs and classpath failures land here, never in `:messages`. *Java buffers only* |
 | `<leader>fk` | Searchable picker of every live mapping |
 
 > Commands registered by a lazy-loaded module only exist once that module has
-> loaded. `:JdtlsLog`, `:JavaNew` and `:SpringBoot*` need a **Java buffer open**;
+> loaded. `:JdtlsLog` and `:JdtlsWipeWorkspace` need a **Java buffer open**;
 > `:ConformInfo` and `:FormatStatus` load conform on demand via its `cmd` list.
 
 Startup cost:
@@ -281,10 +277,10 @@ Break these and something fails *silently*, which is the whole reason they are
 written down.
 
 1. **Honour `vim.b.bigfile`** in anything doing per-buffer or per-keystroke work.
-   Two live examples: `tscontext.lua` returns `false` from `on_attach` (it runs a
-   treesitter query on every cursor move), and `lsp.lua`'s `LspAttach` returns
-   early (it was creating keymaps for a client `bigfile.lua` then detached —
-   see [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)).
+   The live example: `lsp.lua`'s `LspAttach` returns early on it — it was
+   otherwise creating keymaps for a client `bigfile.lua` then detached, leaving
+   `gd` / `gr` / `K` mapped to a dead server (see
+   [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)).
 2. **Every mapped lhs goes in the spec's `keys`; every command in `cmd`.**
 3. **No complete mapping may be the prefix of another** (400 ms `timeoutlen` stall).
 4. **Node-based servers need a `fallback_bin` entry**, or they are never enabled.
@@ -293,7 +289,7 @@ written down.
 7. **Forward-declare a `local` that an earlier closure assigns.** A `local`
    declared later in the file is not in scope for a closure defined above it —
    the assignment silently creates a **global** instead. This has happened twice
-   here (`open_type_stage` in java-creator, `cached_min` in jdtls).
+   here (`cached_min` in jdtls, and once in a module since removed).
 8. **jdtls is excluded from `automatic_enable`** — nvim-jdtls owns its lifecycle.
    Letting mason-lspconfig also enable it starts two competing clients.
 9. **Only override what needs overriding** in `vim.lsp.config`.

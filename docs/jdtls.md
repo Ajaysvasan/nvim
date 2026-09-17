@@ -21,50 +21,100 @@ never started on the first Java file you opened.
 
 ## JDK discovery
 
-> **The scan is cached for the session.** It shells out — one
-> `/usr/libexec/java_home -V` plus a `java -version` per candidate whose version
-> cannot be read otherwise — and `java -version` costs ~150 ms because it boots
-> a JVM to print one line. Three callers need the result
-> (`detect_runtimes()`, `launcher_java()` and `:AjayDoctor`), so uncached it ran
-> the full probe **four times per Java buffer**: 13 subprocesses and ~760 ms of
-> blocking work before the file was editable, every pass returning the same
-> answer. Now: **4 subprocesses, ~196 ms**. Run `:JdtlsRescanJDKs` after
-> installing a JDK mid-session.
+**`$JAVA_HOME` is the source of truth.** Set it in your shell, restart Neovim,
+done.
 
-Two separate questions, often confused:
+This used to be the most complicated part of the file: it enumerated every JDK
+on the machine (`java_home -V`, a `java -version` spawn per candidate, plus
+Homebrew / SDKMAN / jenv / asdf / mise globs), cached the result to disk keyed
+on the jdtls jar filename, and unzipped the server's OSGi manifest to discover
+its minimum version. Roughly 490 lines, all of it answering one question —
+*"which JVM runs jdtls?"* — which is not the question you actually care about.
 
-- **Which JDK runs jdtls?** Must be recent (21+ currently) — this is a property
-  of Eclipse JDT LS, not your code.
-- **Which JDK does your project target?** Anything from 8 up. Set independently
-  via the `runtimes` table.
+### The two questions
 
-### Where it looks
+They get conflated constantly, and keeping them apart is what makes the simple
+version correct:
 
-| Source | Platform |
-|---|---|
-| `vim.g.jdtls_java_home` | Both — **always wins** |
-| `/usr/libexec/java_home -V` | macOS — the authoritative source, knows every properly installed JDK regardless of vendor |
-| `/opt/homebrew/opt/openjdk@N/...` and `/usr/local/opt/...` | macOS — Homebrew *formula* installs are not bundles and `java_home` misses them |
-| `/Library/Java/JavaVirtualMachines/*/Contents/Home` | macOS |
-| `/usr/lib/jvm/*` | Linux |
-| `~/.sdkman/candidates/java/*` | Both |
-| `~/.jenv/versions/*` | Both |
-| `~/.asdf/installs/java/*` | Both |
-| `~/.local/share/mise/installs/java/*` | Both |
-| `$JAVA_HOME` | Both — checked last |
+| Question | Answered by | Typical value |
+|---|---|---|
+| Which JDK does my **project** compile against? | `$JAVA_HOME` | whatever the project needs |
+| Which JVM **runs the language server**? | jdtls's own requirement | 21+ |
 
-Every candidate's version is read by **running `java -version`**, not by parsing
-the directory name. Vendor naming is not something to parse: `zulu-21.jdk`,
-`temurin-21.jdk`, `jdk-21.0.3+9`, `graalvm-community-openjdk-21` all differ.
+The second is not a preference. jdtls's bundle manifest declares
+`Require-Capability: osgi.ee;filter:="(&(osgi.ee=JavaSE)(version=21))"`, and on
+an older JVM the OSGi container refuses to resolve the bundle. You do not get a
+clear error: the launcher dies during bundle activation and surfaces as **exit
+code 13** with clean-looking stderr, the real `UnsupportedClassVersionError`
+landing only in the workspace `.metadata/.log`.
 
-> **Fixed bug:** an earlier version only checked Homebrew `openjdk@N` paths plus
-> a fragile regex over `/Library`. It silently missed Zulu, Temurin, Corretto,
-> GraalVM, Microsoft builds, and every version manager. Switching from Homebrew
-> OpenJDK to Zulu was enough to blind it.
->
-> **Second fixed bug:** it probed `java_home -v <N>` for a hardcoded list, so a
-> JDK 26 install was invisible. Now it parses the full `-V` listing, so new Java
-> releases need no code change.
+### What actually happens
+
+1. **Project runtime** — `$JAVA_HOME` is handed to Eclipse as the single
+   `java.configuration.runtimes` entry (`JavaSE-17` → that path). It must have a
+   `bin/javac`; a JRE is not a valid Eclipse runtime.
+2. **Server JVM** — `$JAVA_HOME` if it is 21 or newer. Otherwise one call to
+   `/usr/libexec/java_home -v 21`, then `-v 21+` if that finds nothing.
+
+Running the server on a different JVM from the one your project targets is
+normal and fully supported — that split is exactly what the `runtimes` table
+exists for, and it happens **silently**.
+
+> It used to print a one-time message naming both JVMs. That was removed: on a
+> machine whose `$JAVA_HOME` is an older LTS the condition is permanent and
+> correct, so the message reported normal operation on every single session.
+> To see which JVM was chosen, run `:AjayDoctor` or
+> `:lua vim.print(require("ajay.jdtls").detected_jdks())`.
+
+> **On this machine:** `$JAVA_HOME` is Zulu 17, so kafka compiles against
+> `JavaSE-17`, and the server runs on Zulu 21. Verified end to end.
+
+## Startup is quiet
+
+Opening a Java file used to flash 6–8 lines past the command line:
+
+```
+Init...
+0% Starting Java Language Server
+45% Starting Java Language Server
+OK
+100% Starting Java Language Server
+Ready
+ServiceReady
+```
+
+None of it is actionable. It comes from **nvim-jdtls' own default
+`language/status` handler** (`setup.lua`, the `status_callback` local), which
+does a raw `:echohl Function | echo "<message>" | echohl None` for every status
+notification the server sends.
+
+`setup.lua` resolves it as `config.handlers["language/status"] or
+status_callback`, so this config supplies its own no-op handler and the noisy
+default never runs. The progress percentages go through the same channel, so
+they stop too.
+
+**Nothing is lost.** nvim-jdtls *wraps* whatever handler you pass — its own
+`ServiceReady` work (fetching `org.eclipse.jdt.ls.core.sourcePaths`) lives in
+the wrapper, outside the handler, so silencing the echo does not disable it.
+Verified after the change: go-to-definition resolves, cross-module references
+return 2886 results on kafka, diagnostics populate.
+
+Real problems still surface — they arrive via `window/showMessage` and the
+diagnostics pipeline, not `language/status`. Set `vim.g.jdtls_debug = true` to
+route status notifications to `vim.notify` at DEBUG level instead of dropping
+them.
+
+### Why `-v 21` before `-v 21+`
+
+`java_home -v 21` returns exactly the 21.x JDK; `-v 21+` returns the **newest**
+at or above 21. Asking for the exact version first is deliberate: jdtls is built
+against one LTS, and Eclipse's OSGi runtime can reject a JVM newer than it knows
+about — the same exit-code-13 failure as above.
+
+Measured on this machine with a full launcher invocation: **Java 17 cannot boot
+jdtls; 21 and 26 both can.** So "newest" would work here today — but that is
+luck, not a guarantee, and it costs three lines to prefer the version jdtls
+actually targets.
 
 ### Escape hatch
 
@@ -72,36 +122,16 @@ the directory name. Vendor naming is not something to parse: `zulu-21.jdk`,
 vim.g.jdtls_java_home = "/path/to/jdk-21/Contents/Home"
 ```
 
-Set that in `options.lua` and all detection is skipped.
+Set that in `options.lua` and it overrides `$JAVA_HOME` for **both** roles.
 
-### Which JDK is chosen to run the server
+### What went away with the old scanner
 
-The **lowest installed version at or above the declared minimum** — not the
-highest.
+`:JdtlsRescanJDKs` (there is no cache left to bust), the on-disk probe cache at
+`stdpath("cache")/ajay-jdtls-probe.json`, the manifest-reading minimum-version
+lookup, and multi-runtime detection. If you need several runtimes registered at
+once — one project on 8, another on 21 — that is the feature this trade gave up;
+switch `$JAVA_HOME` per project instead.
 
-> **Fixed bug:** the first version picked the highest JDK ≥ 21. That's wrong.
-> Eclipse JDT LS is built against a specific LTS and its OSGi runtime **rejects
-> JVMs newer than it supports** — the launcher aborts with **exit code 13**
-> before any LSP traffic happens, with clean-looking stderr. If you have JDK
-> 24/25 installed, "highest wins" hands jdtls a JVM it refuses to run on.
-
-The minimum is not hardcoded. Every OSGi bundle declares its minimum execution
-environment in `META-INF/MANIFEST.MF`, either as
-`Bundle-RequiredExecutionEnvironment` or an `osgi.ee` `Require-Capability`
-filter. This module **unzips the installed `org.eclipse.jdt.ls.core_*.jar` and
-reads it**, so when Mason upgrades jdtls and the requirement moves from 21 to 25,
-this picks it up with no edit. `FALLBACK_MIN = 21` if the jar or `unzip` is
-missing.
-
-If the chosen JDK is more than two releases past the minimum, you get a one-time
-warning suggesting `brew install --cask zulu@<min>`.
-
-If no JDK at or above the minimum exists, the module **refuses to start rather
-than falling back to `java` on PATH** — that path produces "exit code 13" with a
-clean-looking stderr, because the real `UnsupportedClassVersionError` happens
-inside OSGi bundle activation and only lands in the workspace `.metadata/.log`.
-Instead you get an actionable error listing every JDK found and the exact brew
-command to fix it.
 
 ### `M.incubator_hint`
 
@@ -123,7 +153,9 @@ Searched in order: `mason/packages/jdtls/lombok.jar`,
 If found, it is added as `-javaagent:` **on the jdtls JVM itself, before `-jar`**.
 That ordering is required — as a plain classpath entry it does nothing.
 
-Without it, jdtls doesn't see Lombok-generated methods, so you get
+**No warning is printed when the jar is missing** — opening a file should not
+lecture you about a dependency you may not need. The failure is visible in the
+buffer anyway: without it, jdtls doesn't see Lombok-generated methods, so you get
 **"cannot find symbol: getName()"** on every `@Data` entity while Maven builds
 fine. That is the classic "my Spring Boot setup is broken" symptom.
 
@@ -216,9 +248,8 @@ here** — `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca` come from the shared
 `jdtls.setup_dap({ hotcodereplace = "auto" })` is called on attach, so
 [DAP](dap.md) keymaps work in Java too, with hot code replace during a session.
 
-> `<leader>jn` used to collide with `java-creator.lua`'s new-file GUI. Resolved —
-> jdtls keeps `<leader>jn`, the creator moved to `<leader>jN`. See
-> [java-creator.md](java-creator.md).
+> `<leader>jn` used to collide with a new-Java-file GUI module. That module is
+> gone on this branch, so `<leader>jn` is unambiguously "test nearest method".
 
 ## Commands
 
@@ -227,7 +258,6 @@ here** — `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca` come from the shared
 | `:JdtlsLog` | Open **this project's** Eclipse-side log (`.metadata/.log`) in a new tab, scrolled to the bottom. This is where "it worked yesterday" answers live: OOM kills, classpath resolution failures and Maven import errors are logged here and **nowhere** in Neovim's `:messages`. |
 | `:JdtlsWipeWorkspace` | Delete this project's jdtls workspace. The fix for stale classpath errors that survive a restart. Re-indexes on next launch. |
 | `:JdtUpdateConfig` | Plugin built-in — re-import the build config |
-| `:JdtlsRescanJDKs` | Drop the cached JDK scan and redo it, then print what was found. Only needed after **installing or removing a JDK while Neovim is running** — the set of installed JDKs is otherwise stable for the session, and re-probing it is the single most expensive thing this file does. |
 
 ## Troubleshooting
 
@@ -356,7 +386,6 @@ Measured on the same machine, same projects:
 | `clangd` | linux kernel | **27–47 MB** | Fine |
 | `gopls` | — | — | Single process, no build daemon; nothing equivalent to spawn |
 | `lemminx` | — | — | The Mason build is a **native GraalVM binary**, not a JVM |
-| `ts_ls`, `eslint`, `html`, `cssls`, `tailwindcss`, `angularls`, `emmet` | — | — | Defaults only, no heavyweight knob set |
 
 **jdtls was the only offender**, and the JVM/daemon architecture is why: it is
 the only server here that starts a second JVM whose heap is configured by the

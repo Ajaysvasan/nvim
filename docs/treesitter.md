@@ -66,26 +66,21 @@ Then `:TSReset` and restart.
 
 ## Installed parsers
 
-`c`, `cpp`, `python`, `java`, `javascript`, `typescript`, `tsx`, `html`, `css`,
-**`scss`**, **`angular`**, `json`, `lua`, `luadoc`, `bash`, `markdown`,
-`markdown_inline`, `vim`, `vimdoc`, `regex`, `query`, **`xml`**, **`yaml`**,
-**`properties`**
+`c`, `cpp`, `python`, `java`, `go`, **`rust`**, `lua`, `luadoc`, `bash`,
+`markdown`, `markdown_inline`, `vim`, `vimdoc`, `regex`, `query`, `json`,
+`xml`, `yaml`, `properties`
+
+The list tracks the languages this branch keeps an LSP for, plus what is needed
+to read and edit the config itself. `rust` is new here, alongside
+`rust_analyzer`.
 
 `xml`, `yaml` and `properties` are Java-motivated: `xml` for `pom.xml`, `yaml`
-for `application.yml`, `properties` for `application.properties`.
-
-`scss` and `angular` close two gaps where a filetype the config otherwise
-supports fully was silently falling back to regex syntax:
-
-| Parser | Why it was missing | What it fixes |
-|---|---|---|
-| `scss` | `css` was listed, `scss` was not — but they are **separate parsers**, not one language | `.scss` files, which conform already formats and `cssls` already attaches to |
-| `angular` | `.component.html` resolves to filetype `htmlangular`, which maps to language **`angular`**, not `html` | Angular templates — see [lsp.md](lsp.md#angularls--root_markers-is-not-a-gate) |
+for `application.yml`, `properties` for `application.properties`. They stay even
+though the web parsers are gone — they are build files, not web files.
 
 **A filetype is not a language.** `vim.treesitter.language.get_lang(ft)` does the
-translation, and `htmlangular → angular` is the case that catches people out:
-adding `html` to the list does nothing for Angular templates. Check with
-`:TSStatus`, which prints both.
+translation, and the two are often different. Check with `:TSStatus`, which
+prints both.
 
 `markdown_inline` is separate from `markdown` and required for inline code spans,
 links and emphasis to highlight. `vim` + `vimdoc` + `query` + `luadoc` make
@@ -225,126 +220,3 @@ treesitter — see [comment.md](comment.md).
 ## Keymaps
 
 Only the six textobjects above. Incremental selection is gone.
-
-
-## "Where am I?" (`tscontext.lua`)
-
-The enclosing class and method, shown two ways.
-
-### 1. Winbar breadcrumb — default, always on
-
-A single dimmed row above the buffer:
-
-```
- 󰌗 KafkaProducer<K, V>  󰆧 doSend(ProducerRecord<K, V>, Callback)
-   12 │       }
-   11 │       return result.future;
-   10 │       // handling exceptions and record the errors;
-```
-
-The winbar is **its own row**, so it covers nothing.
-
-Powered by `nvim-navic`, which reads `textDocument/documentSymbol` — so it needs
-a language server, and `lsp.lua` attaches it on `LspAttach` for any client that
-provides symbols (jdtls, pyright, gopls, ts_ls all do). `auto_attach` is off so
-that is the single place it happens, after the big-file guard.
-
-`M.winbar()` returns `""` — no row drawn — for anything that is not an ordinary
-file buffer: the dashboard, neo-tree, terminals, `nofile` buffers, the glance
-preview, log files, and any buffer flagged by [bigfile.md](bigfile.md). Verified
-for all six. Cost is **0.0033 ms** per call, which matters because the winbar is
-re-evaluated on every redraw.
-
-Highlights use `Comment`'s colour so the breadcrumb reads as orientation rather
-than content, and it follows whichever theme is active.
-
-### 2. Sticky context — opt-in, `<leader>tC`
-
-> **Off by default, deliberately.** `nvim-treesitter-context` renders as a
-> **float over the buffer**, so the lines it pins necessarily *hide* the top
-> lines of real code. Measured on `KafkaProducer.java`: with it on, three real
-> lines — `this.sender.wakeup();`, `}`, `return result.future;` — were simply
-> not visible. That is inherent to the design, not a setting. Hence the winbar
-> for everyday use, and this for when you specifically want the exact
-> signature pinned.
-
-Turn it on with `<leader>tC`. Deep inside a long method in a long class:
-
-```
-1005 @InterfaceAudience.Public
-1004 public class KafkaProducer<K, V> implements Producer<K, V> {
-  81     private Future<RecordMetadata> doSend(ProducerRecord<K, V> record, Callback callback) {
-─────────────────────────────────────────────────────────────────────────
-     9    ▎   ▎   // handling exceptions and record the errors;
-```
-
-Each context line keeps its **own line number**, so the header says how far
-away the enclosing scope is — the class 1004 lines up, the method 81. With
-`relativenumber` on (see [options.md](options.md)) those are distances; the
-absolute numbers appear when you turn it off.
-
-Nothing is pinned when the cursor is *between* methods — sitting in a javadoc
-block shows only the class, which is correct.
-
-### Declaration-only context — `queries/*/context.scm`
-
-**The shipped queries are why the header felt distracting.** Every language's
-`context.scm` also matches control flow, and TS/JS go further:
-
-| Language | Shipped query also matches |
-|---|---|
-| java | `if_statement`, `for_statement`, `switch_*`, `expression_statement` |
-| python | `try`, `with`, `if`, `elif`, `while`, `except`, `match` |
-| go | `if_statement`, `for_statement`, `composite_literal` |
-| typescript / javascript | `object`, `pair`, `call_expression`, `lexical_declaration`, `if`, `for`, `while`, `switch` |
-| c | `preproc_*`, `if`, `for`, `while`, `switch`, `declaration` |
-
-So the header **churned on every cursor move across a brace**, and in JS every
-object literal became a pinned line.
-
-This config ships its own `queries/<lang>/context.scm` for java, python, go,
-lua, c, cpp, typescript, javascript and tsx, matching **declarations only** —
-classes, interfaces, enums, records, methods, constructors, functions,
-namespaces. Nothing else.
-
-Those files **replace** the plugin's rather than adding to them: Neovim uses the
-first `context.scm` found on the runtimepath unless the file carries an
-`; extends` modeline, and `~/.config/nvim` comes before plugin directories.
-Verified — `vim.treesitter.query.get_files("java", "context")` returns exactly
-one file, this config's.
-
-> `queries/cpp/context.scm` keeps a `; inherits: c` line, which pulls in **this
-> config's** c query, not the plugin's.
-
-| Setting | Value | Why |
-|---|---|---|
-| `max_lines` | `3` | The class and the method is what was asked for; a third covers an inner class or nested function. Matters far less now that the queries above removed control flow from the equation. |
-| `trim_scope` | **`inner`** | The default is `outer`, which discards the **class** first — the one line most worth keeping. |
-| `mode` | `cursor` | "What am I inside of *right now*", not context of the top visible line. |
-| `multiline_threshold` | `3` | A Java signature often wraps; a signature spanning more would otherwise fill the header on its own. |
-| `line_numbers` | `true` | |
-| `min_window_height` | `16` | In a short split, three pinned lines is most of the window. |
-| `separator` | **`nil`** | A full-width `─` rule was the single most distracting part: redrawn on every context change and costing a whole screen line. `TreesitterContextBottom` underlines the last context line instead — same boundary, no extra row, far less ink. |
-
-### It honours `vim.b.bigfile`
-
-`on_attach` returns `false` for buffers flagged by [bigfile.md](bigfile.md).
-This runs a treesitter query on **every cursor move** — precisely the per-move
-work the big-file gate exists to prevent (invariant #1 in [api.md](api.md)).
-Verified: 0 context lines on a 1.3 MB file.
-
-### Highlights follow the theme
-
-`TreesitterContext` is derived from `CursorLine`'s background rather than
-hardcoded, and re-applied on `ColorScheme` — `:colorscheme` runs
-`:highlight clear`, so a theme switch with `<leader>tc` would otherwise wipe it.
-Same pattern as [dashboard.md](dashboard.md).
-
-| Key / command | Action |
-|---|---|
-| `<leader>tC` | Toggle the sticky overlay (the winbar is always on) |
-| `:TSContextToggle` / `:TSContextEnable` / `:TSContextDisable` | Same, by command |
-
-> Those `:TSContext*` names are **this config's**, defined in `tscontext.lua`
-> over the plugin's Lua API — the plugin itself ships no user commands. That is
-> why they appear in its `cmd` list in [plugins.md](plugins.md).

@@ -169,7 +169,6 @@ if ok_mason_dap then
   mason_dap.setup({
     ensure_installed = {
       "python", -- debugpy
-      "js", -- js-debug-adapter (TS/JS/Node *and* Chrome)
       "codelldb", -- C / C++ / Rust
       -- Java: the comment used to say "see below" and nothing was ever
       -- there. Without these two, jdtls.lua's collect_bundles() finds

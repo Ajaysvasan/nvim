@@ -5,8 +5,10 @@ Every mapping in the config, grouped by prefix. **Leader is `<Space>`.**
 Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending ·
 **x** visual (charwise) · **s** select
 
-> `<leader>fk` opens a searchable Telescope picker of every active mapping —
-> often faster than this page.
+> Two faster routes than this page:
+> **press `<Space>` and wait** — [which-key](whichkey.md) pops up the available
+> continuations; or `<leader>fk` for a searchable Telescope picker of every
+> active mapping.
 
 ---
 
@@ -15,20 +17,17 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 | Prefix | Owns |
 |---|---|
 | `<leader>a` | Harpoon add |
-| `<leader>c` | CMake, Copilot, code lens, block comment |
+| `<leader>c` | CMake, code lens, block comment |
 | `<leader>d` | **Debugging (DAP)** |
 | `<leader>f` | **Find (Telescope)** |
-| `<leader>g` | **Git** — gitsigns/telescope/lazygit |
+| `<leader>g` | **Git** — gitsigns + telescope pickers |
 | `<leader>h` | Git **h**unks (gitsigns) + Harpoon |
 | `<leader>j` | **Java** (jdtls) |
-| `<leader>l` | **LSP** — format, diagnostics, emmet, workspace folders |
-| `<leader>m` | Notebooks (**m**olten) |
+| `<leader>l` | **LSP** — format, diagnostics, peek, workspace folders |
 | `<leader>n` | `nh` — clear search highlight |
 | `<leader>r` | **Run** current file, LSP rename |
-| `<leader>s` | **Spring Boot** |
 | `<leader>t` | **Toggles** |
 | `<leader>u` | Undo tree |
-| `<leader>S` | **Sessions** (persistence.nvim) |
 | `<leader>w` | Write (no sub-keys — kept instant) |
 | `<leader>x` | Save+quit (no sub-keys — kept instant) |
 
@@ -38,7 +37,6 @@ Legend: **n** normal · **v** visual · **i** insert · **o** operator-pending �
 
 | Key | Mode | Action | Source |
 |---|---|---|---|
-| `<C-n>` | n | Toggle / focus file tree | [neotree](neotree.md) |
 | `<C-h>` `<C-j>` `<C-k>` `<C-l>` | n | Focus window left/down/up/right | [keymaps](keymaps.md) |
 | `<C-Up>` `<C-Down>` | n | Resize height ±2 | keymaps |
 | `<C-Left>` `<C-Right>` | n | Resize width ±2 | keymaps |
@@ -109,15 +107,6 @@ Source: [treesitter.md](treesitter.md)
 
 Source: [gitsigns.md](gitsigns.md)
 
-## Notebook cells — only with `enable_notebook`
-
-| Key | Mode | Action |
-|---|---|---|
-| `]j` `[j` | n | Next / previous cell |
-| `]o` `[o` | n | Next / previous **evaluated** cell |
-
-Source: [jupyter.md](jupyter.md)
-
 ---
 
 ## `<leader>` — files and search
@@ -163,14 +152,12 @@ Source: [telescope.md](telescope.md)
 
 | Key | Action | Source |
 |---|---|---|
-| `gg` | Open LazyGit | [lazygit](lazygit.md) |
-| `gf` | LazyGit — current file | lazygit |
-| `gl` / `gL` | LazyGit filter / filter current file | lazygit |
 | `gc` | Git commits | telescope |
-| `gC` | `:LazyGitConfig` | lazygit |
 | `gb` | Git branches | telescope |
 | `gs` | Git status | telescope |
 | `gS` | Git stash | telescope |
+
+> Git *hunk* keys live under `<leader>h` — see below.
 
 ## `<leader>h` — hunks and Harpoon
 
@@ -235,22 +222,9 @@ Source: [dap.md](dap.md)
 | `jm` | v | Extract method |
 | `jt` | n | Run test class |
 | `jn` | n | Run nearest test method |
-| `jN` | n | New Java file GUI ([java-creator](java-creator.md)) |
 | `ju` | n | Update project config |
 
 Source: [jdtls.md](jdtls.md)
-
-## `<leader>s` — Spring Boot
-
-| Key | Action |
-|---|---|
-| `sc` | Create project (Spring Initializr) |
-| `sr` | Run application |
-| `sb` | Build |
-| `st` | Run tests |
-| `sx` | **Stop** any running Spring Boot task |
-
-Source: [springboot.md](springboot.md)
 
 ## `<leader>r` — run
 
@@ -261,15 +235,12 @@ Source: [springboot.md](springboot.md)
 | `rj` | Compile and run the current Java file | keymaps |
 | `rn` | LSP rename symbol *(buffer-local)* | [lsp](lsp.md) |
 
-## `<leader>c` — CMake, Copilot, code
+## `<leader>c` — CMake, code
 
 | Key | Mode | Action | Source |
 |---|---|---|---|
 | `cb` | n | CMake build (Release) | [keymaps](keymaps.md) |
 | `cr` | n | Run the CMake target | keymaps |
-| `ct` | n | Toggle Copilot (persisted) | [copilot](copilot.md) |
-| `cs` | n | Copilot status | copilot |
-| `cp` | n | Copilot panel | copilot |
 | `cc` | n, v | Toggle block comment | [comment](comment.md) |
 | `cl` | n | Run code lens *(buffer-local)* | [lsp](lsp.md) |
 | `ca` | n, v | Code action *(buffer-local)* | lsp |
@@ -283,73 +254,28 @@ Source: [springboot.md](springboot.md)
 | `ts` | Format status | conform |
 | `ti` | `:ConformInfo` | conform |
 | `tb` | Git blame line | [gitsigns](gitsigns.md) |
+| `tB` | **Toggle big-file protection** for this buffer | [bigfile](bigfile.md) |
 | `td` | Show deleted lines | gitsigns |
 | `tt` | Transparency | [transparency](transparency.md) |
-| `tc` | **Choose colorscheme** (remembered across restarts) | [colorscheme](colorscheme.md) |
-| `tn` | Cycle to the next colorscheme | colorscheme |
-| `tC` | Toggle the **sticky overlay** (off by default — the winbar breadcrumb is always on) | [treesitter](treesitter.md) |
 
 ## `<leader>l` — language server / format
 
 | Key | Mode | Action | Source |
 |---|---|---|---|
 | `lf` | n, v | Format buffer / range | [conform](conform.md) |
+| `lp` | n | **Peek definition** without leaving the buffer | [lsp](lsp.md) |
 | `ld` | n | Show diagnostic under cursor | [lsp](lsp.md) |
 | `lq` | n | Diagnostics to location list | lsp |
-| `le` | n, v | Emmet wrap with abbreviation | [qol](qol.md) |
 | `lwa` / `lwr` / `lwl` | n | LSP workspace folder add / remove / list | lsp |
 
 > **Everything here used to be on `<leader>w*` and `<leader>x*`, and that was a
 > bug.** `<leader>w` (save) and `<leader>x` (save and quit) are *complete*
 > mappings in [keymaps](keymaps.md), so making them the *prefix* of these left
 > both ambiguous — Neovim cannot act until `timeoutlen` (400ms) expires. Every
-> save in a code buffer, and every save-and-quit in a web buffer, stalled.
+> save in a code buffer, and every save-and-quit stalled too.
 >
 > `<leader>l` is not itself a mapping, so nothing in this group is ambiguous.
 > `<leader>w` and `<leader>x` are now childless and fire instantly.
-
-## `<leader>S` — sessions
-
-| Key | Action |
-|---|---|
-| `Ss` | Restore the session for this directory |
-| `Sl` | Restore the last session used anywhere |
-| `Sd` | Stop saving the current session |
-
-Sessions **save automatically** on exit; only restoring is manual. Restoring also
-restores the **cwd**, which is what makes your [harpoon](harpoon.md) marks be
-there — harpoon keys its list by `cwd`.
-
-**What a session does *not* restore:** the file tree, dashboard, undotree,
-dap-ui panels, quickfix, help and terminal windows are all closed before the
-session is written. `:mksession` records a window by its buffer NAME, and a
-plugin pane has no file behind it — so a saved neo-tree came back as an empty
-*normal* buffer literally named `neo-tree filesystem [1]` rather than a working
-tree. Reopen the tree with `<C-n>` after restoring; it costs nothing.
-
-> Capital `S`, not the `<leader>q*` persistence.nvim's own README suggests:
-> `<leader>q` is `:q<CR>` here, and a complete mapping that is also a prefix
-> stalls for `timeoutlen` before firing. Quitting is far too common for that.
-
-Source: [plugins.md](plugins.md)
-
-## `<leader>m` — notebooks *(only with `enable_notebook`)*
-
-| Key | Mode | Action |
-|---|---|---|
-| `mi` | n | Initialize kernel |
-| `mc` | n | Run current cell |
-| `ml` | n | Evaluate line |
-| `me` | n, v | Evaluate operator / selection |
-| `mn` | n | Run line and move down |
-| `mr` | n | Re-evaluate cell |
-| `ma` | n | Evaluate all cells |
-| `mo` / `mh` | n | Show / hide output |
-| `md` | n | Delete cell |
-| `mq` | n | Interrupt kernel |
-| `mb` | n | Insert cell below |
-
-Source: [jupyter.md](jupyter.md)
 
 ---
 
@@ -362,9 +288,6 @@ Source: [jupyter.md](jupyter.md)
 | `<C-Space>` | Trigger completion | cmp |
 | `<C-e>` | Abort | cmp |
 | `<C-b>` / `<C-f>` | Scroll docs | cmp |
-| `<M-l>` | Accept Copilot ghost text | [copilot](copilot.md) |
-| `<M-]>` / `<M-[>` | Next / previous Copilot suggestion | copilot |
-| `<C-]>` | Dismiss Copilot | copilot |
 
 ## Inside a Telescope picker
 
@@ -391,8 +314,6 @@ Source: [telescope.md](telescope.md)
 
 | Key | Claimed by | Status |
 |---|---|---|
-| `<leader>gc` | Telescope git commits | **Resolved** — LazyGit config moved to `<leader>gC` |
-| `<leader>jn` | jdtls "test nearest" | **Resolved** — java-creator moved to `<leader>jN` |
 | `<leader>1`–`<leader>5` | Harpoon slots | **Resolved** — replaced `<C-1>`–`<C-5>`, which most terminals never sent and whose lazy-load trigger did not match |
 | `<leader>hd` | Gitsigns "diff this" **and** Harpoon "remove file" | **Resolved** — gitsigns' is buffer-local and silently won in every git-tracked file, so harpoon's remove was dead there. Harpoon moved to `<leader>hx`. |
 | `<C-k>` | Window-up **and** LSP signature help | **Resolved** — the buffer-local LSP mapping won in every code buffer, so window-up was broken wherever a server attached. Signature help moved to `gK`. |
