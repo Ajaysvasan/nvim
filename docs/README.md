@@ -1,29 +1,5 @@
 # Documentation index
 
-> ### You are on the `minimal` branch
->
-> This branch strips the config down to a core editing setup. Relative to `main`
-> it removes **neo-tree**, **lazygit**, the whole **Jupyter/molten/image.nvim**
-> notebook stack, **nvim-autopairs**, **nvim-emmet**, the **web language servers**
-> (`ts_ls`, `eslint`, `html`, `cssls`, `tailwindcss`, `angularls`,
-> `emmet_language_server`) and the Java IDE-clone modules (`java-creator.lua`,
-> `springboot.lua`).
->
-> **Kept:** jdtls, DAP, and language servers for Python, Java, C, C++, Go and
-> Rust — plus `lua_ls`, without which this config could not be edited comfortably.
-> Also removed: **nvim-treesitter-context** + **nvim-navic** (the sticky
-> class/method header and the winbar breadcrumb), **log-highlight.nvim**,
-> **alpha-nvim** (the start screen), **copilot.lua** + **copilot-cmp** —
-> agentic AI work happens in a dedicated tool, not in the editor — and
-> **persistence.nvim**, since [harpoon](harpoon.md) already is the working set.
->
-> `netrw` is re-enabled to replace neo-tree, `rust`/`rust_analyzer` are new, and
-> **which-key** is added.
->
-> Pages describing removed modules were deleted. Where a removed plugin still
-> explains *why* something is the way it is, the reference is kept as history and
-> labelled as such.
-
 One page per module in `lua/ajay/`. Each page covers **what the module does**,
 **which settings are enabled and why**, and **every keymap it defines**.
 
@@ -52,7 +28,7 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 
 | Page | Module | What it covers |
 |---|---|---|
-| [colorscheme.md](colorscheme.md) | `colorscheme.lua` | VS Code Dark+; the other themes are commented out, ready to uncomment |
+| [colorscheme.md](colorscheme.md) | `colorscheme.lua` | VS Code Dark+, and how to switch themes |
 | [icons.md](icons.md) | `icons.lua` | Nerd Font glyphs defined by codepoint |
 | [transparency.md](transparency.md) | `transparency.lua` | Transparent-background toggle |
 | [qol.md](qol.md) | `plugins.lua` inline | lualine, indent guides, undotree, rainbow delimiters |
@@ -93,4 +69,4 @@ One page per module in `lua/ajay/`. Each page covers **what the module does**,
 |---|---|---|
 | [doctor.md](doctor.md) | `doctor.lua` | `:AjayDoctor` |
 | [performance.md](performance.md) | — | Every speed decision in one place: startup, navigation, responsiveness |
-| [inactive-modules.md](inactive-modules.md) | — | Record of removed modules (`autoformat.lua`, `null-ls.lua`) and why |
+| [inactive-modules.md](inactive-modules.md) | — | Record of every removed module and plugin, including the web stack, and why |

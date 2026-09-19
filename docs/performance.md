@@ -5,23 +5,22 @@ Every speed decision in the config, in one place. Three separate concerns:
 
 ## Startup, measured
 
-`nvim --headless --startuptime`, median of 9 warm runs:
+`nvim --headless --startuptime`, median of 15 warm runs:
 
-| Scenario | Originally | Now |
-|---|---|---|
-| `nvim` (no file) | ~19.5 ms | **15.4 ms** |
-| `nvim <file>` | ~53.5 ms | **32.8 ms** |
-| `nvim Main.java` (in a Maven project) | 762 ms | **196 ms** |
-| `nvim <file>.java` (in kafka, 6 178 Java files) | 108 ms | **68 ms** |
+| Scenario | Time |
+|---|---|
+| `nvim` (no file) | **15.6 ms** |
+| `nvim main.py` (LSP + git + treesitter wired up) | **~60 ms** |
 
-The kafka row is the newest measurement and came from caching the JDK probe to
-disk — see [Then cached to disk](#then-cached-to-disk--108-ms--68-ms-on-kafka).
-It is lower than the Maven row above because that 196 ms figure predates the
-disk cache.
+For comparison, the fuller config this was trimmed from started in **19.7 ms**
+with no file, measured the same way on the same machine: it loaded 8 plugins at
+startup (three themes and a dashboard among them) where this loads 4.
 
-Re-measured after the language-server changes: **unchanged**. Enabling a
-server costs nothing at startup — `vim.lsp.enable()` only registers it, and the
-client is not started until a matching buffer opens.
+The first Java file of a session costs more, because a JVM is probed once — see
+[The JDK scan](#the-jdk-scan--optimised-hard-then-deleted).
+
+Enabling a server costs nothing at startup — `vim.lsp.enable()` only registers
+it, and the client is not started until a matching buffer opens.
 
 ## Responsiveness, measured
 
@@ -31,7 +30,6 @@ The numbers people actually feel. Same machine, warm caches:
 |---|---|---|
 | Typing, per keystroke | **0.007 ms** | Normal-size file |
 | Typing, per keystroke | **0.435 ms** | Inside a 5 000-line file |
-| Typing brackets/quotes | **0.011 ms** | Measured when `nvim-autopairs` was still installed; it has since been [removed](qol.md#no-autopairs--removed-on-purpose), so this path is now plain insertion |
 | Cursor move `j` | **0.002 ms** | 5 000-line file |
 | Random jump + `zz` | **0.003 ms** | 5 000-line file |
 | Buffer switch `:bnext` | **0.30 ms** | Small buffers |
@@ -121,7 +119,7 @@ editable, every pass returning the same thing.
 first Java file from **108 ms → 68 ms**, and the probe itself from 34.8 ms to
 0.2 ms.
 
-**Then the whole thing was deleted.** On the `minimal` branch `$JAVA_HOME` is
+**Then the whole thing was deleted.** `$JAVA_HOME` is now
 the source of truth ([jdtls.md](jdtls.md#jdk-discovery)), which removed ~490
 lines: the multi-source scanner, the disk cache and its invalidation rules, the
 manifest-reading minimum-version lookup, and `:JdtlsRescanJDKs`.
@@ -130,10 +128,17 @@ manifest-reading minimum-version lookup, and `:JdtlsRescanJDKs`.
 
 | | First Java file of the session |
 |---|---|
-| `main` (disk-cached scanner) | **68 ms** |
-| `minimal` (`$JAVA_HOME`) | **203 ms** |
+| Disk-cached scanner (before) | **68 ms** |
+| `$JAVA_HOME` (now) | **203 ms** |
 
-The remaining 203 ms is two `java -version` spawns and one `java_home` call,
+**Then the probe got cheap, and the fallback came back.** Reading
+`<home>/release` — a key=value file every JDK ships — answers "what version is
+this?" without booting anything, so the JDK search that had to be deleted for
+being slow now costs **0.0 ms** and works on Linux too, where the macOS-only
+`java_home` call left it with no fallback at all (see
+[jdtls.md](jdtls.md#what-actually-happens)).
+
+The 203 ms above was two `java -version` spawns and one `java_home` call,
 **once per session** — a session memo (four lines, no disk, no invalidation
 command) takes every later call to 0.009 ms. Requiring the module still costs
 0.1 ms; nothing probes at load time.
@@ -155,20 +160,21 @@ The one number that looks alarming and is not. Each language pays a **once per
 session** cost the first time you open a file of that type — lazy.nvim loading
 its plugins plus the treesitter parser `.so`. Every file after that is cheap.
 
-Measured in a **separate nvim instance per language**, so no ordering bias:
+Measured in a **separate nvim instance per language**, so no ordering bias —
+time for `:edit` to return, median of 5:
 
 | Language | Cold (1st of session) | Warm (every one after) |
 |---|---|---|
-| TypeScript | 91.6 ms | **3.1 ms** |
-| TSX | 110.7 ms | **4.0 ms** |
-| HTML | 24.7 ms | — |
-| CSS / SCSS | 24.2 ms | **5.3 ms** |
-| Python | 93.6 ms | — |
-| C++ | 126.0 ms | — |
+| Lua | 20.9 ms | **2.1 ms** |
+| Go | 28.2 ms | **2.1 ms** |
+| Java | 28.6 ms | **1.9 ms** |
+| Python | 49.0 ms | **2.3 ms** |
+| Rust | 72.5 ms | **1.9 ms** |
+| C++ | 169.9 ms | **2.4 ms** |
 
 **Navigation is not slow — first contact is.** If you measure by opening one
 file of each type in one session you will read the cold column and conclude the
-config is sluggish; open a second file of the same type and it is 3–5 ms.
+config is sluggish; open a second file of the same type and it is ~2 ms.
 
 ### LSP attach does not block
 
@@ -213,13 +219,6 @@ its `bin` directory on `PATH`. So:
 On a fully-installed machine **Mason never loads at all**. `:MasonSync` forces
 the install pass by hand.
 
-### Catppuccin plugin auto-detection off — ~2.9 ms
-
-`auto_integrations` scans every installed plugin on every startup to guess which
-integrations to enable. On this config it found exactly one thing the explicit
-list did not already cover (`rainbow_delimiters`), now listed by hand. See
-[colorscheme.md](colorscheme.md) for the trade-off.
-
 ### Treesitter installs only what is missing — ~1 ms, plus a lot of I/O
 
 `ts.install()` on the full list ran inline at every launch. It is now
@@ -232,7 +231,7 @@ list did not already cover (`rainbow_delimiters`), now listed by hand. See
 
 ### What is left
 
-Roughly irreducible: lazy.nvim parsing 48 specs (~2.8 ms), Neovim's own
+Roughly irreducible: lazy.nvim parsing the spec (~2.8 ms, measured at 48 plugins), Neovim's own
 `ftplugin/lua.lua` (~2.3 ms), gitsigns attaching (~2.3 ms), the colorscheme applying
 (~2.3 ms).
 

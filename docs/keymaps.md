@@ -91,4 +91,3 @@ version silently ran the wrong command there.
 | `<leader>h*` | [gitsigns.lua](gitsigns.md) and [harpoon.lua](harpoon.md) |
 | `<leader>g*` | [gitsigns.lua](gitsigns.md), [telescope.lua](telescope.md) |
 | `<leader>j*` | [jdtls.lua](jdtls.md) |
-| `<leader>m*` | [jupyter.lua] (removed) |

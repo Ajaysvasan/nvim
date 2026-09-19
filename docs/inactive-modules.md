@@ -1,59 +1,52 @@
-# Removed and superseded modules
+# Removed modules and plugins
 
-Everything in `lua/ajay/` is now **loaded**. This page is the record of what was
-removed and why, so it does not get re-added by accident.
+Everything in `lua/ajay/` is **loaded**, and every plugin in `plugins.lua` is in
+use. This page is the one record of what was taken out and why, so it does not
+get re-added by accident. The code is recoverable from git history.
 
-| File | Fate |
+## Modules
+
+| File | Why it went |
 |---|---|
-| `autoformat.lua` | **Deleted** — superseded by [conform](conform.md) |
-| `null-ls.lua` | **Deleted** — null-ls is archived upstream |
-| `transparency.lua` | **Now live** — rewritten, see [transparency.md](transparency.md) |
+| `autoformat.lua` | Superseded by [conform](conform.md). It also defined `:ToggleFormatOnSave`, `<leader>tf`, `<leader>ts` and `<leader>ti`, which all belong to conform — loading both meant one silently shadowed the other — and it used the dot-form `client.supports_method()`, removed in Neovim 0.12. |
+| `null-ls.lua` | null-ls is archived upstream, conform covers formatting, and its formatter arguments contradicted conform's, so running both flipped style back and forth on alternate saves. |
+| `dashboard.lua` | alpha-nvim start screen. Plain `nvim` opens an empty buffer. |
+| `neotree.lua` | File tree. netrw, built into Neovim, is the directory browser (`:Ex`). |
+| `lazygit.lua` | LazyGit floating window (`<leader>gg`). |
+| `copilot.lua` | Copilot suggestions and the `copilot-cmp` source. |
+| `jupyter.lua` | molten + image.nvim + jupytext notebook stack, and the `vim.g.enable_notebook` flag. Needed luarocks, ImageMagick and the Python provider. |
+| `springboot.lua` | Spring Initializr project creation and run/build/test commands. |
+| `java-creator.lua` | IntelliJ-style "new Java class" dialog (~1,100 lines). |
+| `tscontext.lua` | nvim-treesitter-context sticky header and nvim-navic winbar breadcrumb. |
 
-Both deletions are recoverable from git:
+## Plugins with no module file
 
-```bash
-git checkout HEAD~1 -- lua/ajay/autoformat.lua
-```
+| Plugin | Why it went |
+|---|---|
+| catppuccin, darcula-dark.nvim | Three themes were installed and eagerly loaded for a switcher that was not used. One theme remains — see [colorscheme.md](colorscheme.md). |
+| nvim-autopairs | Auto-pairing guesses wrong when typing into existing code, and "type the closing character to skip over it" silently swallows keystrokes. Typing both halves is predictable. |
+| persistence.nvim | [harpoon](harpoon.md) already persists the working set, per cwd. |
+| log-highlight.nvim | Syntax highlighting for `.log` files. |
+| nvim-ts-context-commentstring | Only useful for embedded languages — JSX in `.tsx`, `<script>` in `.html`. With the web stack gone, every remaining filetype gets the same result from its plain `commentstring`. |
 
----
+## The web stack
 
-## `autoformat.lua` — deleted
+JavaScript, TypeScript, React, Angular, HTML and CSS support was removed as a
+whole:
 
-An LSP-only format-on-save implementation: a `BufWritePre` autocmd calling
-`vim.lsp.buf.format()` with a filter for clients supporting
-`textDocument/formatting`.
+- **Language servers:** `ts_ls`, `eslint`, `html`, `cssls`, `tailwindcss`,
+  `angularls`, `emmet_language_server`, and `lemminx` (XML).
+- **Formatting:** prettier and biome, and their per-project detection in
+  conform.
+- **Treesitter parsers:** javascript, typescript, tsx, html, css, scss, angular.
+- **Debugging:** the `pwa-node` / `pwa-chrome` adapters and the Node, Jest and
+  Chrome launch configurations.
+- **Snippets:** the HTML `!` boilerplate and the JSX tag snippets.
+- **Plugins:** nvim-emmet.
 
-**Why it went.** [conform.nvim](conform.md) does the same job better — real
-standalone formatters (`prettier`, `black`, `stylua`, `google-java-format`)
-rather than whatever the language server happens to offer, with per-formatter
-arguments, and it still falls back to the LSP via `lsp_format = "fallback"`.
+To bring a language back, follow [api.md](api.md)'s recipe for adding one.
 
-It was also not merely redundant but **actively dangerous to load**:
-
-1. It defined `:ToggleFormatOnSave`, `<leader>tf`, `<leader>ts` and `<leader>ti`
-   — **all four already belong to conform**. Loading both meant one silently
-   shadowed the other and the toggles stopped matching reality.
-2. It used `client.supports_method(...)` — the **dot** form, deprecated in
-   Neovim 0.11 and **removed in 0.12**. It would have errored on every save.
-
-## `null-ls.lua` — deleted
-
-Wired `prettier`, `clang_format`, `black`, `isort`, `stylua` as formatters,
-`eslint_d` and `ruff` as diagnostics, and `eslint_d` code actions, through
-null-ls's fake-LSP bridge.
-
-**Why it went:**
-
-- **null-ls is archived upstream.** The maintained fork is `none-ls.nvim`, and
-  neither is in the plugin list — so the file would `pcall`-fail and return
-  immediately anyway.
-- conform covers the formatting half.
-- Its prettier args (`--no-semi --single-quote`) **directly contradicted** the
-  conform config (`--semi true --single-quote false`). Running both would have
-  flipped quote style and semicolons back and forth on alternate saves.
-- It registered its own `BufWritePre` format autocmd, competing with conform's.
-
-**If you want the linting half back** — `eslint_d` diagnostics beyond what the
-`eslint` LSP gives you, or `ruff` for Python — add
-[nvimtools/none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) and register
-only the `diagnostics` and `code_actions` sources. Leave formatting to conform.
+> **If a removed server still attaches** after pulling this config onto a
+> machine that had the old one: `lsp.lua` only enables the servers listed in its
+> `ensure_servers`, so it will not — but the Mason packages are still on disk.
+> Remove them with `:MasonUninstall <name>`.

@@ -7,7 +7,7 @@ local opt = vim.opt
 
 -- ── Mason binaries on PATH ────────────────────────────────────────
 -- This is the ONLY thing mason contributes at runtime: everything it
--- installs (language servers, prettier, stylua, black, debug adapters)
+-- installs (language servers, formatters, debug adapters)
 -- lands in one bin directory that has to be on PATH for conform, nvim-dap
 -- and vim.lsp to find it.
 --
@@ -40,9 +40,8 @@ end
 --
 -- None of this config's Python tooling is a pynvim remote-plugin host:
 -- pyright, debugpy, black, isort and ruff are all independent LSP/DAP/CLI
--- subprocesses. molten-nvim was the one thing that genuinely needed
--- :python3, and it is gone on this branch -- so the provider is simply
--- off. Ruby never had a consumer here either.
+-- subprocesses, so the provider is simply off. Ruby has no consumer
+-- here either.
 vim.g.loaded_python3_provider = 0
 vim.g.loaded_ruby_provider = 0
 
@@ -154,8 +153,8 @@ end)
 -- `help` is dropped too: a restored help window is rarely what you meant
 -- to reopen.
 --
--- No session plugin uses this on the minimal branch (harpoon is the
--- working set). It still applies to a hand-run :mksession/:source.
+-- There is no session plugin; this applies to a hand-run
+-- :mksession / :source.
 --
 -- What is left is the part worth keeping: which files were open, where you
 -- were, and the window geometry.

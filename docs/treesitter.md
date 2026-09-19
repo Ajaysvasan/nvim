@@ -55,7 +55,7 @@ Error during "tree-sitter build": ENOENT: no such file or directory (cmd): 'tree
 
 and you get **no treesitter highlighting at all** — Neovim silently falls back
 to regex syntax. Worse, `install()` retries on every startup, so it re-downloads
-all 22 grammars each launch and fails at the compile step each time.
+every grammar in the list each launch and fails at the compile step each time.
 
 ```bash
 brew install tree-sitter            # macOS
@@ -70,9 +70,8 @@ Then `:TSReset` and restart.
 `markdown`, `markdown_inline`, `vim`, `vimdoc`, `regex`, `query`, `json`,
 `xml`, `yaml`, `properties`
 
-The list tracks the languages this branch keeps an LSP for, plus what is needed
-to read and edit the config itself. `rust` is new here, alongside
-`rust_analyzer`.
+The list tracks the languages this config has a language server for, plus what
+is needed to read and edit the config itself.
 
 `xml`, `yaml` and `properties` are Java-motivated: `xml` for `pom.xml`, `yaml`
 for `application.yml`, `properties` for `application.properties`. They stay even
@@ -110,7 +109,7 @@ Both `ts.setup()` and `ts.install()` are wrapped in `pcall`, and the initial
    is interactive. Highlighting is driven by the `FileType` autocmd below, which
    already `pcall`s around a parser that is still installing.
 2. **Guarded on the `tree-sitter` CLI existing.** Without it, `install()` still
-   downloads all 22 grammars and *only then* fails at the compile step — on every
+   downloads every grammar in the list and *only then* fails at the compile step — on every
    single startup. That is a pile of network jobs and a wall of errors for work
    that cannot possibly succeed. Now it checks, says something actionable once,
    and does nothing.
@@ -210,12 +209,9 @@ early on it — so treesitter never starts there at all.
 
 ## Related plugins
 
-**`rainbow-delimiters.nvim`** loads on `BufReadPost` / `BufNewFile` with no
-configuration — it colours matching bracket pairs by nesting depth using
-treesitter's parse tree.
-
-**`nvim-ts-context-commentstring`** is a dependency of Comment.nvim, not of
-treesitter — see [comment.md](comment.md).
+**`rainbow-delimiters.nvim`** loads on `BufReadPost` / `BufNewFile` and colours
+matching bracket pairs by nesting depth using treesitter's parse tree. Its only
+configuration is a size gate — see [qol.md](qol.md#rainbow-delimitersnvim).
 
 ## Keymaps
 

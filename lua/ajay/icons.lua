@@ -35,28 +35,6 @@ M.diagnostics = {
   HINT = g(0xf0eb, "H"), -- nf-fa-lightbulb_o
 }
 
-M.tree = {
-  folder_closed = g(0xf07b, "+"), -- nf-fa-folder
-  folder_open = g(0xf07c, "-"), -- nf-fa-folder_open
-  folder_empty = g(0xf114, "*"), -- nf-fa-folder_o
-  folder_empty_open = g(0xf115, "*"), -- nf-fa-folder_open_o
-  default = g(0xf15b, " "), -- nf-fa-file
-  expander_collapsed = g(0xf0da, ">"), -- nf-fa-caret_right
-  expander_expanded = g(0xf0d7, "v"), -- nf-fa-caret_down
-}
-
-M.git = {
-  added = g(0xf067, "A"), -- nf-fa-plus
-  modified = g(0xf111, "M"), -- nf-fa-circle
-  deleted = g(0xf00d, "D"), -- nf-fa-close
-  renamed = g(0xf061, "R"), -- nf-fa-arrow_right
-  untracked = g(0xf128, "?"), -- nf-fa-question
-  ignored = g(0xf05e, "!"), -- nf-fa-ban
-  unstaged = g(0xf06a, "U"), -- nf-fa-exclamation_circle
-  staged = g(0xf00c, "S"), -- nf-fa-check
-  conflict = g(0xf071, "C"), -- nf-fa-warning
-}
-
 M.dap = {
   breakpoint = g(0xf111, "B"), -- nf-fa-circle
   breakpoint_condition = g(0xf192, "C"), -- nf-fa-dot_circle_o
@@ -79,7 +57,7 @@ M.dap = {
 function M.preview()
   local lines =
     { "If any of these are boxes or blanks, the TERMINAL FONT is", "not a Nerd Font. Nothing in Lua can fix that.", "" }
-  for _, group in ipairs({ "diagnostics", "tree", "git", "dap" }) do
+  for _, group in ipairs({ "diagnostics", "dap" }) do
     table.insert(lines, group .. ":")
     local row = {}
     for name, glyph in pairs(M[group]) do

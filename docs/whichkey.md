@@ -75,7 +75,7 @@ mappings and reports **overlapping** and **duplicate** ones — the same class o
 bug this config chased down by hand in
 [keymap-reference.md](keymap-reference.md#known-collisions).
 
-Current result on this branch:
+Current result:
 
 ```
 Checking for issues with your mappings ~

@@ -86,9 +86,8 @@ A notification fires once per buffer telling you what was switched off.
 Turning it **off** clears the flags, restores syntax and cursorline, restarts
 treesitter, and **re-attaches any running language server** for the filetype.
 
-> This replaced a one-way `:BigFileOff` plus a separate `:BigFileStatus`. A
-> file you care about getting caught by the gate is the common case, so the
-> bare command toggles.
+A file you care about getting caught by the gate is the common case, so the bare
+command toggles.
 
 > `<leader>tB` is capital on purpose. `<leader>tb` is gitsigns' blame toggle,
 > mapped **buffer-locally** in its `on_attach` — and a buffer-local mapping

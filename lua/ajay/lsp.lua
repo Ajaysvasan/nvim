@@ -73,8 +73,6 @@ local ensure_servers = {
   "clangd",
   "jdtls",
   "gopls",
-  -- rust_analyzer is NEW on this branch. The full config never had Rust
-  -- support at all, so "keep the Rust LSP" meant adding one.
   "rust_analyzer",
   -- lua_ls is not one of the target languages. It is here to keep THIS
   -- config editable: completion on the vim.* API, and the `vim` global
@@ -83,8 +81,6 @@ local ensure_servers = {
 }
 
 local ensure_tools = {
-  -- prettier went with the web stack: nothing left here is a filetype it
-  -- formats.
   "clang-format",
   "black",
   "isort",
@@ -118,8 +114,20 @@ local function setup_mason()
       -- mason-lspconfig v2 renamed this. `automatic_installation` is a
       -- no-op now; `automatic_enable` is what calls vim.lsp.enable() for
       -- you, and it is what picks a server up once it has been installed.
-      -- jdtls is excluded because nvim-jdtls owns it.
-      automatic_enable = { exclude = { "jdtls" } },
+      --
+      -- A LIST, not `{ exclude = { "jdtls" } }`. The exclude form enables
+      -- EVERY server Mason has installed, whether or not this file asks
+      -- for it. So any package left behind in stdpath("data")/mason --
+      -- from an older version of this config, or a one-off :MasonInstall
+      -- -- came back to life whenever this function ran, which is every
+      -- launch where one tool above is missing. That is how servers this
+      -- config had dropped kept attaching to files anyway. Only what
+      -- ensure_servers names is ever enabled now.
+      --
+      -- jdtls is left out because nvim-jdtls starts it.
+      automatic_enable = vim.tbl_filter(function(name)
+        return name ~= "jdtls"
+      end, ensure_servers),
     })
   end
 
@@ -344,7 +352,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
     -- Registering <leader>wa/wr/wl buffer-locally meant that in EVERY
     -- buffer a language server attached to -- i.e. every code file --
     -- pressing <leader>w sat there for 400ms before saving. Same for
-    -- <leader>x, which also collides with <leader>xe (emmet).
+    -- <leader>x.
     --
     -- This is the exact bug keymaps.lua documents fixing for <leader>h,
     -- reintroduced from the other direction: there the prefix was moved,
@@ -467,26 +475,14 @@ end, { desc = "Toggle inlay hints" })
 -- Net effect: on a machine where everything is installed, mason is never
 -- loaded at all unless you ask for it with :Mason or :MasonSync.
 
--- Node-based servers do NOT ship `cmd` as a table. nvim-lspconfig gives
--- them a FUNCTION so it can prefer a project-local
--- node_modules/.bin/<server> over the global one:
+-- A server whose nvim-lspconfig config ships `cmd` as a FUNCTION rather
+-- than a table has no cmd[1] to read, and calling the function to find
+-- out would SPAWN the server. Name its binary here instead. Getting this
+-- wrong is loud, not silent -- see `unknown` below.
 --
---   cmd = function(dispatchers, config)
---     local cmd = 'typescript-language-server'
---     if (config or {}).root_dir then ... prefer local ... end
---     return vim.lsp.rpc.start({ cmd, '--stdio' }, dispatchers)
---   end
---
--- There is no cmd[1] to read, and calling the function to find out would
--- SPAWN the server. Every one of these closures falls back to a fixed
--- global binary name, so name them here. Getting this wrong is silent:
--- the server is simply never enabled and nothing is logged.
+-- Only jdtls needs an entry: pyright, clangd, gopls, rust_analyzer and
+-- lua_ls all ship a plain `cmd` table that server_bin() reads directly.
 local fallback_bin = {
-  -- Only jdtls still needs an entry. Every other server that shipped a
-  -- `cmd` FUNCTION rather than a table (ts_ls, eslint, html, cssls,
-  -- tailwindcss, angularls) belonged to the web stack and is gone;
-  -- pyright, clangd, gopls, rust_analyzer and lua_ls all ship a plain
-  -- `cmd` table that server_bin() reads directly.
   jdtls = "jdtls",
 }
 
@@ -509,9 +505,8 @@ for _, name in ipairs(ensure_servers) do
   local bin = server_bin(name)
   if bin == nil then
     -- A server whose cmd we cannot introspect and that is not in
-    -- fallback_bin. Previously this branch silently did nothing, which is
-    -- exactly how ts_ls/eslint/html/cssls/tailwindcss ended up disabled
-    -- for weeks without a single error message. Say so instead.
+    -- fallback_bin. This branch used to do nothing, which left servers
+    -- disabled for weeks without a single error message. Say so instead.
     table.insert(unknown, name)
   elseif vim.fn.executable(bin) ~= 1 then
     missing = true

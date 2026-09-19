@@ -1,7 +1,7 @@
 -- =============================================================================
 -- lua/ajay/dap.lua
--- Full-stack DAP configuration
--- Languages: Python, TypeScript/JavaScript, Go, C/C++, Rust, Java
+-- DAP configuration
+-- Languages: Python, Go, C/C++, Rust, Java
 -- =============================================================================
 
 local ok_dap, dap = pcall(require, "dap")
@@ -188,20 +188,12 @@ if ok_mason_dap then
       "javadbg",
       "javatest",
       --
-      -- Two entries were removed here:
-      --
-      --   "chrome" -> resolves to the mason package `chrome-debug-adapter`,
-      --   the long-superseded standalone adapter. The `pwa-chrome` adapter
-      --   this config actually registers below comes out of
-      --   js-debug-adapter, which is already in the list. Installing it
-      --   fetched a second, unused, unmaintained adapter.
-      --
-      --   "delve" -> the Go adapter. It needs a Go toolchain to build, so
-      --   on a machine without Go the install FAILS, and because it stays
-      --   in ensure_installed it is retried on every single DAP load --
-      --   "[mason-nvim-dap] installing delve" plus a network job, forever.
-      --   dap.configurations.go below is untouched, so `go install
-      --   github.com/go-delve/delve/cmd/dlv@latest` still lights it up.
+      -- "delve" (Go) is deliberately NOT here. It needs a Go toolchain to
+      -- build, so on a machine without Go the install FAILS, and because it
+      -- would stay in ensure_installed it is retried on every single DAP
+      -- load -- "[mason-nvim-dap] installing delve" plus a network job,
+      -- forever. dap.configurations.go below is untouched, so `go install
+      -- github.com/go-delve/delve/cmd/dlv@latest` still lights it up.
     },
     automatic_installation = true,
     handlers = {}, -- use default handlers; we override per-language below
@@ -270,89 +262,6 @@ else
       connect = { host = "127.0.0.1", port = 5678 },
     },
   }
-end
-
--- =============================================================================
--- JAVASCRIPT / TYPESCRIPT  (js-debug-adapter, covers Node + Chrome)
--- =============================================================================
-dap.adapters["pwa-node"] = {
-  type = "server",
-  host = "localhost",
-  port = "${port}",
-  executable = {
-    command = "node",
-    args = {
-      vim.fn.stdpath("data") .. "/mason/packages/js-debug-adapter/js-debug/src/dapDebugServer.js",
-      "${port}",
-    },
-  },
-}
-
-dap.adapters["pwa-chrome"] = {
-  type = "server",
-  host = "localhost",
-  port = "${port}",
-  executable = {
-    command = "node",
-    args = {
-      vim.fn.stdpath("data") .. "/mason/packages/js-debug-adapter/js-debug/src/dapDebugServer.js",
-      "${port}",
-    },
-  },
-}
-
--- Shared JS/TS configurations
-local js_configs = {
-  {
-    type = "pwa-node",
-    request = "launch",
-    name = "Launch Node (current file)",
-    program = "${file}",
-    cwd = "${workspaceFolder}",
-    sourceMaps = true,
-    resolveSourceMapLocations = { "${workspaceFolder}/**", "!**/node_modules/**" },
-  },
-  {
-    type = "pwa-node",
-    request = "attach",
-    name = "Attach to Node process",
-    processId = require("dap.utils").pick_process,
-    cwd = "${workspaceFolder}",
-    sourceMaps = true,
-  },
-  {
-    type = "pwa-node",
-    request = "launch",
-    name = "Debug Jest tests",
-    runtimeExecutable = "node",
-    runtimeArgs = { "./node_modules/jest/bin/jest.js", "--runInBand" },
-    rootPath = "${workspaceFolder}",
-    cwd = "${workspaceFolder}",
-    console = "integratedTerminal",
-    internalConsoleOptions = "neverOpen",
-  },
-  {
-    type = "pwa-chrome",
-    request = "launch",
-    name = "Launch Chrome (localhost:3000)",
-    url = "http://localhost:3000",
-    webRoot = "${workspaceFolder}",
-    sourceMaps = true,
-  },
-  {
-    type = "pwa-node",
-    request = "launch",
-    name = "Launch with ts-node",
-    runtimeExecutable = "node",
-    runtimeArgs = { "--loader", "ts-node/esm" },
-    program = "${file}",
-    cwd = "${workspaceFolder}",
-    sourceMaps = true,
-  },
-}
-
-for _, lang in ipairs({ "javascript", "typescript", "javascriptreact", "typescriptreact" }) do
-  dap.configurations[lang] = js_configs
 end
 
 -- =============================================================================
@@ -497,10 +406,6 @@ if vscode_ok then
   if vim.fn.filereadable(launch) == 1 then
     vscode.load_launchjs(launch, {
       -- Map vscode type strings to our adapter names
-      ["node"] = { "javascript", "typescript" },
-      ["node2"] = { "javascript", "typescript" },
-      ["pwa-node"] = { "javascript", "typescript", "javascriptreact", "typescriptreact" },
-      ["pwa-chrome"] = { "javascriptreact", "typescriptreact", "javascript", "typescript" },
       ["python"] = { "python" },
       ["cppdbg"] = { "c", "cpp" },
       ["codelldb"] = { "c", "cpp", "rust" },

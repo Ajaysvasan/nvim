@@ -43,8 +43,8 @@ local mason_root = vim.fn.stdpath("data") .. "/mason/packages"
 --
 -- (a) An ERROR-level vim.notify raised from inside a FileType autocmd
 --     ABORTS the autocmd chain. Neovim surfaces it as "Vim(append):<your
---     message>" and the buffer load fails -- which is why neo-tree threw
---     a traceback just trying to open AuthController.java. A diagnostic
+--     message>" and the buffer load fails -- opening AuthController.java
+--     threw a traceback instead of showing the file. A diagnostic
 --     message should never prevent the file from opening. vim.schedule
 --     defers it to the main loop, outside the autocmd.
 --
@@ -86,11 +86,17 @@ end
 --     the launcher dies inside OSGi bundle activation and you get
 --     "exit code 13" with nothing useful in lsp.log.
 --
--- So we use $JAVA_HOME when it is new enough, and otherwise fall back to
--- the newest JDK `/usr/libexec/java_home` reports -- ONE subprocess, no
--- caching, no per-JDK probing. Running the server on a different JVM
--- from the one your project targets is normal and supported; that is
--- exactly what the `runtimes` table is for.
+-- So we use $JAVA_HOME when it is new enough, and otherwise look for a
+-- JDK 21+ ourselves. Running the server on a different JVM from the one
+-- your project targets is normal and supported; that is exactly what the
+-- `runtimes` table is for.
+--
+-- THE FALLBACK IS CHEAP, which is the whole reason it is allowed back.
+-- The scanner this file used to carry spawned `java -version` for every
+-- candidate -- 13 subprocesses and ~760 ms before the first Java file was
+-- editable, which is why it was deleted. A JDK ships its version in a
+-- plain text file at <home>/release, so reading that answers the same
+-- question with no process at all. See release_version() below.
 --
 -- Escape hatch: vim.g.jdtls_java_home overrides both.
 
@@ -107,22 +113,48 @@ local function trim(x)
   return (x:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+--- Major version out of <home>/release -- a key=value file every JDK and
+--- JRE since 8 ships, e.g. `JAVA_VERSION="21.0.12.1"`. A file read instead
+--- of a JVM boot, so candidates can be compared for free.
+--- @return number|nil
+local function release_version(home)
+  local f = io.open(home .. "/release", "r")
+  if not f then
+    return nil
+  end
+  local ver
+  for line in f:lines() do
+    local v = line:match('^JAVA_VERSION="([^"]+)"')
+    if v then
+      -- Handles both "1.8.0_402" and "21.0.3".
+      ver = tonumber(v:match("^1%.(%d+)") or v:match("^(%d+)"))
+      break
+    end
+  end
+  f:close()
+  return ver
+end
+
 local function probe_version(home)
+  local from_file = release_version(home)
+  if from_file then
+    return from_file
+  end
+  -- No `release` file: a hand-assembled JDK, or one repackaged without it.
+  -- Fall back to asking the JVM, which costs ~20 ms.
   local bin = home .. "/bin/java"
   if vim.fn.executable(bin) ~= 1 then
     return nil
   end
   -- `java -version` writes to stderr, hence 2>&1.
   local out = vim.fn.system(vim.fn.shellescape(bin) .. " -version 2>&1")
-  -- Handles both "1.8.0_402" and "21.0.3".
   return tonumber(out:match('version "1%.(%d+)') or out:match('version "(%d+)'))
 end
 
--- Session memo. `probe_version` boots a JVM (~100 ms), and both
--- detect_runtimes() and launcher_java() need the answer -- uncached that is
--- ~120 ms of JVM spawns per Java buffer, all of it returning the same thing.
--- $JAVA_HOME cannot change inside a running Neovim, so one lookup is enough.
--- No disk cache and no :Rescan command: this is cheap enough not to need them.
+-- Session memo. Both detect_runtimes() and launcher_java() ask the same
+-- questions, and neither the environment nor /usr/lib/jvm can change inside a
+-- running Neovim, so one lookup each is enough. No disk cache and no :Rescan
+-- command: with release_version() this is cheap enough not to need them.
 local memo = {}
 
 --- The JDK $JAVA_HOME points at, or nil.
@@ -141,48 +173,133 @@ local function java_home_jdk()
   return memo.jh[1], memo.jh[2]
 end
 
+--- Every JDK (not JRE) worth considering, deduped by real path.
+---
+--- Deduping on the RESOLVED path matters on Linux: /usr/lib/jvm is mostly
+--- symlinks, so a Fedora box lists 16 entries that are 3 actual JDKs.
+--- @return string[]
+local function jdk_candidates()
+  local uv = vim.uv or vim.loop
+  local seen, out = {}, {}
+
+  local function add(home)
+    if not home or home == "" or vim.fn.isdirectory(home) ~= 1 then
+      return
+    end
+    -- javac, not java: a JRE can neither run jdtls's compiler nor serve as
+    -- an Eclipse runtime, and headless JREs are common on Linux.
+    if vim.fn.executable(home .. "/bin/javac") ~= 1 then
+      return
+    end
+    local real = uv.fs_realpath(home) or home
+    if seen[real] then
+      return
+    end
+    seen[real] = true
+    table.insert(out, real)
+  end
+
+  -- Whatever `java` on PATH belongs to. Usually the answer on its own, and
+  -- it costs one readlink.
+  local exe = vim.fn.exepath("java")
+  if exe ~= "" then
+    add(vim.fs.dirname(vim.fs.dirname(uv.fs_realpath(exe) or exe)))
+  end
+
+  local home_dir = vim.env.HOME or ""
+  for _, pattern in ipairs({
+    "/usr/lib/jvm/*",
+    "/usr/lib64/jvm/*",
+    "/usr/java/*",
+    "/opt/java/*",
+    home_dir ~= "" and (home_dir .. "/.sdkman/candidates/java/*") or nil,
+    home_dir ~= "" and (home_dir .. "/.jdks/*") or nil,
+  }) do
+    for _, dir in ipairs(vim.fn.glob(pattern, true, true)) do
+      add(dir)
+    end
+  end
+
+  return out
+end
+
 --- A JDK that can run jdtls, or nil. Only called when $JAVA_HOME can't.
 ---
---- Asks macOS rather than globbing: `java_home -v 21` returns exactly the
---- 21.x JDK, and `-v 21+` returns the NEWEST at or above 21.
+--- On macOS, ask the system: `java_home -v 21` returns exactly the 21.x
+--- JDK, and `-v 21+` returns the newest at or above 21. Everywhere else,
+--- read the candidates' `release` files.
 ---
---- We try the exact version first on purpose. jdtls is built against one
---- LTS, and Eclipse's OSGi runtime can refuse a JVM newer than it knows
---- about -- which surfaces as "exit code 13" with a clean-looking stderr,
---- because the real error happens during bundle activation and only ever
---- lands in the workspace .metadata/.log. Measured on this machine: Java
---- 17 cannot boot it, 21 and 26 both can. 26 working today is luck, not a
---- guarantee, so prefer the version jdtls actually targets.
+--- Either way the EXACT version is preferred, on purpose. jdtls is built
+--- against one LTS, and Eclipse's OSGi runtime can refuse a JVM newer than
+--- it knows about -- which surfaces as "exit code 13" with a clean-looking
+--- stderr, because the real error happens during bundle activation and only
+--- ever lands in the workspace .metadata/.log. Measured on this machine:
+--- Java 17 cannot boot it, 21 and 26 both can. 26 working today is luck,
+--- not a guarantee, so prefer the version jdtls actually targets -- i.e.
+--- the LOWEST version at or above the minimum, not the newest installed.
 --- @return string|nil home, number|nil version
 local function newest_supported_jdk()
-  if vim.fn.executable("/usr/libexec/java_home") ~= 1 then
-    return nil, nil
-  end
   if memo.alt ~= nil then
     return memo.alt[1], memo.alt[2]
   end
-  for _, want in ipairs({ tostring(JDTLS_MIN_JAVA), JDTLS_MIN_JAVA .. "+" }) do
-    local home = trim(vim.fn.system({ "/usr/libexec/java_home", "-v", want }))
-    if vim.v.shell_error == 0 and home ~= "" and vim.fn.isdirectory(home) == 1 then
-      memo.alt = { home, probe_version(home) }
-      return memo.alt[1], memo.alt[2]
+  memo.alt = {}
+
+  -- macOS: one subprocess, and it covers Homebrew, Zulu, Temurin, Corretto,
+  -- GraalVM and SDKMAN installs wherever they put themselves.
+  if vim.fn.executable("/usr/libexec/java_home") == 1 then
+    for _, want in ipairs({ tostring(JDTLS_MIN_JAVA), JDTLS_MIN_JAVA .. "+" }) do
+      local home = trim(vim.fn.system({ "/usr/libexec/java_home", "-v", want }))
+      if vim.v.shell_error == 0 and home ~= "" and vim.fn.isdirectory(home) == 1 then
+        memo.alt = { home, probe_version(home) }
+        return memo.alt[1], memo.alt[2]
+      end
     end
   end
-  memo.alt = {}
-  return nil, nil
+
+  -- Everywhere else -- i.e. Linux, where there is no java_home tool.
+  --
+  -- THE BUG THIS FIXES: this branch did not exist. The only fallback was
+  -- the macOS-only call above, so on Linux with $JAVA_HOME unset jdtls
+  -- never started at all -- "jdtls needs JDK 21+ to run, and none was
+  -- found" -- on a machine with a perfectly good JDK 21 in /usr/lib/jvm
+  -- and `java` on PATH.
+  local best, best_ver
+  for _, home in ipairs(jdk_candidates()) do
+    local ver = probe_version(home)
+    if ver and ver >= JDTLS_MIN_JAVA and (best_ver == nil or ver < best_ver) then
+      best, best_ver = home, ver
+    end
+  end
+  if best then
+    memo.alt = { best, best_ver }
+  end
+  return memo.alt[1], memo.alt[2]
 end
 
 --- `runtimes` for jdtls: what your PROJECT compiles against.
---- Just $JAVA_HOME -- one entry, because one is what you set.
+--- $JAVA_HOME -- one entry, because one is what you set.
 local function detect_runtimes()
+  --- Eclipse needs a real JDK, in a release it has a definition for. A JRE
+  --- is not a valid runtime -- it has no javac and no src.zip, so a project
+  --- pinned to it gets unresolved JDK symbols and no source navigation.
+  local function usable(h, v)
+    return h ~= nil and v ~= nil and v >= 8 and v <= MAX_EE and vim.fn.executable(h .. "/bin/javac") == 1
+  end
+
   local home, ver = java_home_jdk()
-  -- A JRE is not a valid Eclipse runtime; it needs javac.
-  if not (home and ver and ver >= 8 and ver <= MAX_EE) then
+
+  -- $JAVA_HOME unset, unreadable, newer than Eclipse knows, or a JRE: name
+  -- the JDK that runs the server instead of sending nothing. Eclipse would
+  -- otherwise fall back to its own JVM anyway, so this changes no behaviour
+  -- -- it just makes the execution environment explicit, which is what
+  -- shows up in :JdtlsLog when something is wrong.
+  if not usable(home, ver) then
+    home, ver = newest_supported_jdk()
+  end
+  if not usable(home, ver) then
     return {}
   end
-  if vim.fn.executable(home .. "/bin/javac") ~= 1 then
-    return {}
-  end
+
   return { {
     name = ver <= 8 and "JavaSE-1.8" or ("JavaSE-" .. ver),
     path = home,
@@ -221,12 +338,18 @@ local function launcher_java()
       ("jdtls needs JDK %d+ to run, and none was found."):format(JDTLS_MIN_JAVA),
       "",
       home and ("$JAVA_HOME = " .. home .. (ver and (" (Java %d)"):format(ver) or " (version unreadable)"))
-        or "$JAVA_HOME is not set.",
+        or ("$JAVA_HOME is not set, and no JDK %d+ was found on PATH,"):format(JDTLS_MIN_JAVA)
+          .. "\nin /usr/lib/jvm, /usr/java, ~/.sdkman or ~/.jdks.",
       "",
-      ("  brew install --cask zulu@%d"):format(JDTLS_MIN_JAVA),
+      vim.fn.has("mac") == 1 and ("  brew install --cask zulu@%d"):format(JDTLS_MIN_JAVA)
+        or ("  sudo dnf install java-%d-openjdk-devel    (or apt install openjdk-%d-jdk)"):format(
+          JDTLS_MIN_JAVA,
+          JDTLS_MIN_JAVA
+        ),
       "",
       "Or point at one directly:",
-      '  vim.g.jdtls_java_home = "/path/to/jdk/Contents/Home"',
+      vim.fn.has("mac") == 1 and '  vim.g.jdtls_java_home = "/path/to/jdk/Contents/Home"'
+        or '  vim.g.jdtls_java_home = "/usr/lib/jvm/java-21-openjdk"',
     }, "\n"),
     vim.log.levels.ERROR
   )

@@ -13,13 +13,10 @@ Loads on any `<leader>d*` key, `<F5>`–`<F8>`, or `:DapContinue` / `:DapNew`.
 | `codelldb` | C, C++, Rust |
 | `javadbg` + `javatest` | Java — see [jdtls.md](jdtls.md) |
 
-Three entries were removed from `ensure_installed`:
-
-| Removed | Why |
-|---|---|
-| `"js"` | **Removed on the `minimal` branch** along with the rest of the web stack. There is no JS/TS language server, treesitter parser or formatter left, so a JS debug adapter had nothing to pair with. |
-| `"chrome"` | Resolves to the mason package `chrome-debug-adapter`, the long-superseded standalone adapter. The `pwa-chrome` adapter came out of **js-debug-adapter** instead — so this only ever fetched a second, unused, unmaintained adapter. |
-| `"delve"` | The Go adapter needs a Go toolchain to build. On a machine without Go the install **fails**, and because it stayed in `ensure_installed` it was retried on **every DAP load** — `[mason-nvim-dap] installing delve` plus a network job, forever. |
+`"delve"` (Go) is deliberately **not** in `ensure_installed`. It needs a Go
+toolchain to build. On a machine without Go the install **fails**, and because it
+would stay in the list it is retried on **every DAP load** —
+`[mason-nvim-dap] installing delve` plus a network job, forever.
 
 `dap.configurations.go` and the `delve` adapter definition are untouched:
 `go install github.com/go-delve/delve/cmd/dlv@latest` still lights Go debugging
@@ -119,8 +116,7 @@ start it with
 
 If `<cwd>/.vscode/launch.json` exists, it is loaded automatically via
 `dap.ext.vscode.load_launchjs()`, with a type map translating VS Code's adapter
-names (`node`, `node2`, `pwa-node`, `pwa-chrome`, `python`, `cppdbg`, `codelldb`,
-`go`, `java`) to the right filetypes. Project-local debug configs work without
+names (`python`, `cppdbg`, `codelldb`, `go`, `java`) to the right filetypes. Project-local debug configs work without
 any conversion.
 
 ## Keymaps

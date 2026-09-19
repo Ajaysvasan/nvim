@@ -1,7 +1,7 @@
 # `comment.lua` — commenting
 
-[Comment.nvim](https://github.com/numToStr/Comment.nvim) with
-[nvim-ts-context-commentstring](https://github.com/JoosepAlviste/nvim-ts-context-commentstring).
+[Comment.nvim](https://github.com/numToStr/Comment.nvim). Loads on
+`BufReadPost` / `BufNewFile`.
 
 ## Why this broke on the Mac
 
@@ -36,21 +36,6 @@ operator wins, and a single press just sits waiting for a motion.
 on every OS. `Ctrl+/` is layered on top as a convenience, mapped in all three
 encodings, in normal + visual + insert mode.
 
-## Filetype-aware commentstring
-
-`ts_context_commentstring` is wired in through Comment.nvim's `pre_hook`, which
-makes commenting respect the **language under the cursor**, not just the file's
-filetype.
-
-Without it, Comment.nvim uses `vim.bo.commentstring`, which for a `.tsx` file is
-always `// %s` — so commenting a JSX block gives you broken syntax instead of
-`{/* … */}`. Same problem in `.vue`, `.svelte`, `.html` with embedded
-`<script>`/`<style>`, and `.astro`.
-
-The plugin's own autocmd is skipped
-(`vim.g.skip_ts_context_commentstring_module = true` in the plugin spec) because
-the `pre_hook` calls it directly — otherwise you pay for it twice.
-
 ## Comment.nvim settings
 
 | Setting | Value | Why |
@@ -68,13 +53,10 @@ where Neovim's bundled ftplugins are missing or wrong:
 | Filetype | Set to | Why |
 |---|---|---|
 | `c`, `cpp`, `cs`, `java` | `// %s` | C ships as `/* %s */`, which **doesn't nest** — commenting a range that already contains a block comment produces broken code |
-| `json`, `jsonc` | `// %s` | jsonc-style, valid in `tsconfig.json` and `launch.json` |
+| `json`, `jsonc` | `// %s` | jsonc-style, valid in `.vscode/launch.json` |
 | `sql` | `-- %s` | |
 | `gitignore`, `dockerfile`, `conf`, `hyprlang` | `# %s` | No ftplugin ships one |
-| `kdl`, `prisma` | `// %s` | |
-
-Treesitter context handles the embedded-language cases; this handles plain
-filetypes that just have no ftplugin.
+| `kdl` | `// %s` | |
 
 ## Keymaps
 

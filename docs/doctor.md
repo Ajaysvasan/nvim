@@ -30,7 +30,7 @@ font is not a Nerd Font.** No amount of Lua fixes that — fix the terminal prof
 
 ### nvim-web-devicons
 Reports whether devicons loaded, then resolves the icon and highlight group for
-`init.lua`, `main.py`, `Main.java`, `App.tsx` and `main.cpp`.
+`init.lua`, `main.py`, `Main.java`, `main.go` and `main.cpp`.
 
 *The key inference:* if the bracketed characters are present **here** but you see
 nothing in a file listing, the plugin is fine and it **is** the font. If

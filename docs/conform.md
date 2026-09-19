@@ -33,7 +33,7 @@ actually runs is resolved per project, answering two separate questions.
 pytorch is the live example: its `pyproject.toml` declares `[tool.ruff]` and
 `[tool.ruff.format]`, so running black there would be the wrong tool entirely.
 
-Python is the only filetype with competing toolchains on this branch, so it is
+Python is the only filetype with competing toolchains, so it is
 the only one that routes through tool detection. The rest resolve straight to
 the table above.
 
@@ -53,10 +53,6 @@ defaults in this file silently overrode whatever the project asked for:
 | project's `stylua.toml` | `indent_type = "Tabs"` |
 | stylua on its own | a tab-indented file |
 | **this config, before** | two spaces, because `--indent-type Space` was on the command line |
-
-> The original demonstration of this bug used prettier and a `.prettierrc`
-> asking for `singleQuote`/`no-semi`; prettier is gone from this branch, but the
-> mechanism and the fix are identical for every formatter listed below.
 
 On a shared repo that means every save rewrites files to one developer's taste —
 diff noise, and a failing lint job in the project's own CI.

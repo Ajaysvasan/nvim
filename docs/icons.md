@@ -31,12 +31,11 @@ in `init.lua` degrades the whole UI to readable ASCII instead of tofu boxes.
 Every consumer requires this module through `pcall` with its own inline ASCII
 fallback — see [lsp.md](lsp.md) and [dap.md](dap.md).
 A missing or broken `icons.lua` degrades the UI to ASCII; it never takes down a
-language server, the file tree, or the debugger.
+language server or the debugger.
 
 | Table           | Consumed by               | Contains                                                                                                                     |
 | --------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `M.diagnostics` | [lsp.lua](lsp.md)         | `ERROR` `WARN` `INFO` `HINT` — with ASCII fallbacks `E` `W` `I` `H`                                                          |
-| `M.git`         | [gitsigns.lua](gitsigns.md) | added, modified, deleted, renamed, untracked, ignored, unstaged, staged, conflict |
 | `M.dap`         | [dap.lua](dap.md)         | breakpoint, conditional breakpoint, log point, stopped, rejected, and the dap-ui control buttons (pause/play/step/terminate) |
 
 Each entry is commented with its `nf-fa-*` name from the
@@ -59,7 +58,7 @@ Look the glyph up on the cheat sheet, take its hex codepoint, and add it with an
 ASCII fallback:
 
 ```lua
-M.tree.symlink = g(0xf0c1, "@")  -- nf-fa-link
+M.dap.watch = g(0xf06e, "W")  -- nf-fa-eye
 ```
 
 Do **not** paste the literal character — that is the failure mode this file

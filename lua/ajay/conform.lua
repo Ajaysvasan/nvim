@@ -10,10 +10,9 @@ local M = {}
 -- turn it off precisely because a formatter is mangling a file, and the
 -- next time you open that file it mangles it again on the first save.
 --
--- Persisted to disk instead, using the same pattern (and for the same
--- reason) as the colorscheme choice in colorscheme.lua: a one-word state file
--- under stdpath("data"), i.e. outside this git repo, so the preference
--- follows the machine rather than the config.
+-- Persisted to disk instead: a one-word state file under
+-- stdpath("data"), i.e. outside this git repo, so the preference follows
+-- the machine rather than the config.
 --
 -- Only the GLOBAL toggle persists. The buffer-local one
 -- (:ToggleFormatOnSaveBuffer) deliberately does not -- a buffer is a

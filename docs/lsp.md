@@ -45,22 +45,33 @@ The warning is deferred with `vim.schedule` so it can't abort startup.
 
 `pyright`, `clangd`, `jdtls`, `gopls`, `rust_analyzer`, `lua_ls`
 
-`lua_ls` is kept even though this branch is otherwise language-minimal: without
-it, editing *this config* has no completion or diagnostics.
+`lua_ls` is not one of the target languages: it is here so that editing *this
+config* has completion and diagnostics.
 
-> **`rust_analyzer` needs a Rust toolchain that is not installed here.**
-> `rustup` is on `PATH` but `cargo` and `rustc` are not, so lspconfig refuses to
-> start it with `[rust_analyzer] cargo not found.` and the server never attaches.
-> `rustup default stable` fixes it; nothing in the config needs to change.
+> **`rust_analyzer` needs a Rust toolchain.** Without `cargo` on `PATH`,
+> lspconfig refuses to start it with `[rust_analyzer] cargo not found.` and the
+> server never attaches. `rustup default stable` fixes it; nothing in the config
+> needs to change.
 
-| Server | Attaches to | Note |
-|---|---|---|
+### Only these servers are ever enabled
 
-`mason-lspconfig` is configured with `automatic_enable = { exclude = { "jdtls" } }`
-— but **only when it is loaded at all**, see [Mason, on demand](#mason-on-demand).
+`mason-lspconfig` is configured with
+
+```lua
+automatic_enable = vim.tbl_filter(function(name)
+  return name ~= "jdtls"
+end, ensure_servers),
+```
+
+— and **only when it is loaded at all**, see [Mason, on demand](#mason-on-demand).
 
 - `automatic_enable` is the **v2 name**; `automatic_installation` is a no-op now.
-- **jdtls is excluded** because [nvim-jdtls](jdtls.md) owns its lifecycle
+- **It is a list, not `{ exclude = { "jdtls" } }`.** The `exclude` form enables
+  *every* server Mason has installed, whether or not this file asks for it. A
+  package left on disk — from an older version of this config, or a one-off
+  `:MasonInstall` — came back to life on every launch where one tool was
+  missing. That is how removed servers kept attaching to files anyway.
+- **jdtls is left out** because [nvim-jdtls](jdtls.md) owns its lifecycle
   entirely — letting mason-lspconfig also `vim.lsp.enable()` it would start two
   competing clients.
 
@@ -75,13 +86,14 @@ shape as `isort` + `black`). `ruff` is **not** a replacement for isort+black:
 per project, so a repo whose `pyproject.toml` declares `[tool.ruff]` gets ruff
 and everything else keeps isort+black.
 
-`prettier` and `eslint_d` used to be in this list. Both are gone with the web
-stack — there is no filetype left that routes to either.
-
 | Setting | Value | Why |
 |---|---|---|
 | `auto_update` | `false` | Was `true` — that fires a network job on **every** start |
 | `run_on_start` | `true` | Missing tools get fetched once — but only on a run where mason is loaded at all |
+
+> **If one of these never finishes installing, Mason loads on every launch.**
+> Step 3 below fires whenever anything in `ensure_servers` or `ensure_tools` is
+> missing. Check `:Mason` for a failed install.
 
 ## Mason, on demand
 
@@ -108,9 +120,9 @@ mason plugins are their own `lazy = true` specs. The flow inverted:
    already put mason's `bin` directory on `PATH`, so mason-installed binaries
    resolve *without mason being loaded*.
 2. **Enable what is present** with `vim.lsp.enable()`. On 0.11+ that is all you
-   need — nvim-lspconfig ships `cmd` and `root_markers` for all 414 servers in
-   its own `lsp/` directory, which `vim.lsp.config` reads off the runtimepath.
-   The binary each server needs is read from there too, rather than hardcoded.
+   need — nvim-lspconfig ships `cmd` and `root_markers` for every server in its
+   own `lsp/` directory, which `vim.lsp.config` reads off the runtimepath. The
+   binary each server needs is read from there too, rather than hardcoded.
    **See the trap below — this step is where it bites.**
 3. **Only if something is missing**, load mason and let it install — via
    `vim.schedule`, so it never blocks the first draw. `mason-lspconfig`'s
@@ -120,40 +132,21 @@ mason plugins are their own `lazy = true` specs. The flow inverted:
 ### The trap: `cmd` is not always a table
 
 Step 2 asks "what binary does this server need?" and reads `cmd[1]` out of
-`vim.lsp.config[name]`. That works for `pyright`, `clangd` and `lua_ls`.
+`vim.lsp.config[name]`. That works for `pyright`, `clangd`, `gopls`,
+`rust_analyzer` and `lua_ls`.
 
-It does **not** work for any Node-based server. nvim-lspconfig gives those a
-`cmd` **function**, so it can prefer a project-local copy:
+It does **not** work for a server whose lspconfig config ships `cmd` as a
+**function** — jdtls does, to build its arguments at start time. There is no
+`cmd[1]` to read, and calling the function to find out would **spawn the
+server**. The first version of this file returned `nil` there and the loop
+skipped those servers — it neither enabled them nor marked anything missing, so
+mason never loaded to fix it either. Five servers never started, with no
+message, for weeks.
 
-```lua
-cmd = function(dispatchers, config)
-  local cmd = 'jdtls'
-  if (config or {}).root_dir then
-    local local_cmd = vim.fs.joinpath(config.root_dir, 'node_modules/.bin', cmd)
-    if vim.fn.executable(local_cmd) == 1 then cmd = local_cmd end
-  end
-  return vim.lsp.rpc.start({ cmd, '--stdio' }, dispatchers)
-end
-```
-
-There is no `cmd[1]` to read, and calling the function to find out would
-**spawn the server**. The first version of this file returned `nil` there and
-the loop skipped those servers — it neither enabled them nor marked anything
-missing, so mason never loaded to fix it either.
-
-The result was that **every server whose Mason binary is not named after its
-lspconfig key never started at all**: no completion, no diagnostics, no
-go-to-definition in those buffers. Python, C++ and Lua kept working, because
-their `cmd` *is* a table — which is exactly why it never looked broken.
-
-On this branch `jdtls` is the only server left in that category, but the guard
-stays: the failure mode is silent, and the next server added could reintroduce
-it.
-
-The fix is a `fallback_bin` map naming the global binary each of those closures
-falls back to, plus a startup warning listing any server in `ensure_servers`
-whose binary still cannot be determined. **This class of failure must never be
-silent again** — that is what the warning is for.
+The fix is a `fallback_bin` map naming the binary for each of those servers,
+plus a startup warning listing any server in `ensure_servers` whose binary still
+cannot be determined. **This class of failure must never be silent again** —
+that is what the warning is for.
 
 ```lua
 local fallback_bin = {
@@ -161,8 +154,8 @@ local fallback_bin = {
 }
 ```
 
-If you add a Node-based server to `ensure_servers`, add it here too — or watch
-for the warning, which will tell you exactly that.
+If you add a server whose `cmd` is a function, add it here too — or watch for
+the warning, which will tell you exactly that.
 
 Net effect: on a machine where everything is installed, **mason is never loaded
 at all** unless you ask for it with `:Mason` or `:MasonSync`.
@@ -256,7 +249,8 @@ vim.lsp: method "textDocument/definition" is not supported by any server
 activated for this buffer
 ```
 
-[bigfile.md](bigfile.md) detaches the LSP from oversized buffers, but it does so
+[bigfile.md](bigfile.md) detaches the LSP from the most extreme buffers (past
+`lsp_max_bytes`, or a pathological single-line file), but it does so
 from its own `LspAttach` handler via `vim.schedule` — **deferred**. This file's
 handler runs synchronously in the same event, so the order was:
 
@@ -269,7 +263,9 @@ leaving every LSP keymap pointing at a client that no longer existed.
 Reproduced on pytorch's `common_methods_invocations.py` (1.3 MB): `bigfile=true`,
 `clients=0`, and `gd`/`gr`/`K` all still mapped.
 
-The handler now returns early on a `vim.b.bigfile` buffer. Mapping nothing is
+The handler now returns early on a `vim.b.bigfile_no_lsp` buffer — **not**
+`vim.b.bigfile`: a merely large file keeps its language server and its keymaps,
+because LSP runs out of process and does not block redraw. Mapping nothing is
 better than unmapping later: with no buffer-local `gd`, the key falls back to
 Vim's own *go to local declaration*, which is useful in a huge file and costs
 nothing. Same shape as the guard in `start_jdtls()` ([jdtls.md](jdtls.md)).

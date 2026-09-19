@@ -62,7 +62,7 @@ except where noted.
 |---|---|
 | `:Lazy` | lazy.nvim — plugin state, `:Lazy sync`, `:Lazy profile` |
 | `:Mason` | mason.nvim — install/update LSPs, formatters, DAP adapters |
-| `:Explore` / `:Lexplore` | **netrw** — Neovim's built-in file browser, re-enabled on this branch now that neo-tree is gone |
+| `:Explore` / `:Lexplore` | **netrw** — Neovim's built-in file browser |
 | `:Telescope <picker>` | telescope |
 | `:Gitsigns toggle_*` | gitsigns — `toggle_signs`, `toggle_numhl`, `toggle_linehl`, `toggle_word_diff` |
 | `:UndotreeToggle` | undotree |

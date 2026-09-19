@@ -84,7 +84,7 @@ work, **honour `vim.b.bigfile`**.
 
 | Flag | Set by | Read by | Meaning |
 |---|---|---|---|
-| `vim.b.bigfile` | [bigfile.lua](bigfile.md) at `BufReadPre` | treesitter, lsp, cmp, jdtls, options | This buffer is too large for per-keystroke work. **Do nothing expensive.** |
+| `vim.b.bigfile` | [bigfile.lua](bigfile.md) at `BufReadPre` | treesitter, cmp, options, rainbow-delimiters | This buffer is too large for per-keystroke work. **Do nothing expensive.** |
 | `vim.b.disable_autoformat` | user / bigfile | conform | Skip format-on-save for this buffer only. **OR'd with the global** — `vim.g.disable_autoformat` wins, so clearing this does not re-enable formatting while the global is off ([conform.md](conform.md)) |
 | `vim.b.bigfile_no_lsp` | [bigfile.lua](bigfile.md) | lsp, jdtls | Stronger than `bigfile`: detach language servers too. Only set past `lsp_max_bytes` or on a pathological single-line file — a merely large file **keeps its LSP**. |
 | `vim.b.codelens_off` | bigfile | lsp | Never request code lenses here |
@@ -125,12 +125,11 @@ vim.lsp.config("gopls", { settings = { gopls = { staticcheck = true } } })
 > `PATH` silently fails to start.
 
 > ⚠️ **The `fallback_bin` trap.** Startup decides whether a server is installed
-> by reading `cmd[1]` from `vim.lsp.config[name]`. Node-based servers ship `cmd`
-> as a **function** (so they can prefer a project-local `node_modules/.bin` copy),
-> so there is no `cmd[1]` to read. Those must be listed in the `fallback_bin`
-> table or they are **never enabled and never installed**, silently. This once
-> disabled `ts_ls`, `eslint`, `html`, `cssls` and `tailwindcss` for weeks. A
-> startup warning now names any server it cannot resolve — do not ignore it.
+> by reading `cmd[1]` from `vim.lsp.config[name]`. Some servers ship `cmd` as a
+> **function** instead of a table — jdtls does — so there is no `cmd[1]` to read.
+> Those must be listed in the `fallback_bin` table or they are never enabled and
+> never installed. This once disabled five servers for weeks without a message.
+> A startup warning now names any server it cannot resolve — do not ignore it.
 
 **2. Formatter** — `lua/ajay/conform.lua` + `ensure_tools` in `lsp.lua`
 
@@ -143,7 +142,8 @@ local ensure_tools = { ..., "goimports", "gofumpt" }
 
 If the LSP formats well enough, **add nothing** — `format_on_save` sets
 `lsp_format = "fallback"`, so any filetype with no `formatters_by_ft` entry uses
-its language server automatically. That is exactly why XML has no entry.
+its language server automatically. That is exactly why Rust has no entry —
+`rust_analyzer` drives `rustfmt` itself.
 
 If conform *does* own the filetype, disable the server's formatter so a stray
 `vim.lsp.buf.format()` cannot fight it:
@@ -216,14 +216,13 @@ is only for mappings needing **no plugin**.
 | | `pick(feat, a, b)` | Inline two-way value choice |
 | | `needs(feat)` | Returns a `cond` function for a lazy spec |
 | | `codelens.enable/is_enabled` | 0.11↔0.12 CodeLens shim |
-| `ajay.icons` | `diagnostics` `tree` `git` `dap` | Glyph tables, built from codepoints |
+| `ajay.icons` | `diagnostics` `dap` | Glyph tables, built from codepoints |
 | | `preview()` | Render every glyph to check the font |
 | `ajay.jdtls` | `detected_jdks()` | `$JAVA_HOME`, plus the fallback JVM if `$JAVA_HOME` is too old to run jdtls |
 | `ajay.transparency` | `toggle()` | |
-| `ajay.colorscheme` | `apply(name)` `cycle()` `pick()` | Switch theme; the choice persists |
-| | `current()` `lualine_theme()` | Active theme, and its matching lualine theme |
-| | `themes` | The registry — add a table here to add a theme ([colorscheme.md](colorscheme.md)) |
-| `ajay.bigfile` | `max_bytes` `max_line_length` | Thresholds — assign to change them |
+| `ajay.colorscheme` | `reapply()` | Rebuild the theme, reading `vim.g.transparent_background` fresh ([colorscheme.md](colorscheme.md)) |
+| | `lualine_theme()` | The lualine theme matching the colorscheme |
+| `ajay.bigfile` | `max_bytes` `lsp_max_bytes` `max_line_length` | Thresholds — assign to change them |
 | `ajay.conform` | `detect_buf(bufnr)` | What this project's formatter setup resolves to ([conform.md](conform.md)) |
 
 ### Prefer `compat.has` over version numbers
@@ -276,22 +275,26 @@ is simply wrong.
 Break these and something fails *silently*, which is the whole reason they are
 written down.
 
-1. **Honour `vim.b.bigfile`** in anything doing per-buffer or per-keystroke work.
-   The live example: `lsp.lua`'s `LspAttach` returns early on it — it was
-   otherwise creating keymaps for a client `bigfile.lua` then detached, leaving
+1. **Honour `vim.b.bigfile`** in anything doing per-buffer or per-keystroke work,
+   and `vim.b.bigfile_no_lsp` in anything LSP-related. The live example:
+   `lsp.lua`'s `LspAttach` returns early on `bigfile_no_lsp` — it was otherwise
+   creating keymaps for a client `bigfile.lua` then detached, leaving
    `gd` / `gr` / `K` mapped to a dead server (see
    [lsp.md](lsp.md#no-lsp-keymaps-on-big-files)).
 2. **Every mapped lhs goes in the spec's `keys`; every command in `cmd`.**
 3. **No complete mapping may be the prefix of another** (400 ms `timeoutlen` stall).
-4. **Node-based servers need a `fallback_bin` entry**, or they are never enabled.
+4. **A server whose `cmd` is a function needs a `fallback_bin` entry**, or it is never enabled.
 5. **`mason-nvim-dap` takes its own aliases** (`javadbg`), not Mason package names.
 6. **Shape A modules go through `setup_module()`; Shape B through `require()`.**
 7. **Forward-declare a `local` that an earlier closure assigns.** A `local`
    declared later in the file is not in scope for a closure defined above it —
    the assignment silently creates a **global** instead. This has happened twice
    here (`cached_min` in jdtls, and once in a module since removed).
-8. **jdtls is excluded from `automatic_enable`** — nvim-jdtls owns its lifecycle.
-   Letting mason-lspconfig also enable it starts two competing clients.
+8. **`automatic_enable` is a list built from `ensure_servers`, without jdtls.**
+   Never `{ exclude = ... }`: that form enables *every* server Mason has
+   installed, so a package left on disk from an older config comes back to life.
+   jdtls stays out because nvim-jdtls owns its lifecycle — letting
+   mason-lspconfig also enable it starts two competing clients.
 9. **Only override what needs overriding** in `vim.lsp.config`.
 
 ---

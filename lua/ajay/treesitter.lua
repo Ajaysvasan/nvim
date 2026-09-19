@@ -113,10 +113,10 @@ vim.schedule(function()
   --
   -- `ts.get_installed()` with NO ARGUMENT merges those two lists. That is
   -- what this used to call, and it is why every language silently lost
-  -- highlighting: a half-finished install left `queries/ecma`,
-  -- `queries/jsx` and `queries/html_tags` on disk with an EMPTY parser
-  -- directory, the merged list reported those as "installed", and any
-  -- language already counted present was never re-attempted.
+  -- highlighting: a half-finished install left a few query directories
+  -- on disk with an EMPTY parser directory, the merged list reported
+  -- those as "installed", and any language already counted present was
+  -- never re-attempted.
   --
   -- The failure is invisible rather than loud, because a stale
   -- master-era .so left behind in the PLUGIN's own directory is still on

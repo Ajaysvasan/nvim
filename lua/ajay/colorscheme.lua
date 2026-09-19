@@ -2,54 +2,16 @@
 --
 -- ONE theme: VS Code Dark+ (Mofiqul/vscode.nvim).
 --
--- This was a registry with a switcher (:Theme, :ThemeNext, <leader>tc /
--- <leader>tn, and the choice persisted to stdpath("data")/colorscheme_state).
--- That is gone: three themes were installed and eagerly loaded to support
--- switching that never happened in practice.
---
 -- SWITCHING THEMES
---   1. In plugins.lua, uncomment the theme's entry in the colorscheme spec's
---      `dependencies` (and comment out vscode.nvim if you want it gone), then
---      :Lazy sync.
---   2. Below, comment out apply_theme's body and uncomment the block for the
---      theme you want.
---   3. Point M.lualine_theme() at the matching lualine theme name.
---
--- Both halves are needed: step 1 puts the plugin on the runtimepath, step 2
--- calls into it.
+--   1. In plugins.lua, replace the vscode.nvim spec with the theme you want
+--      (keep `lazy = false, priority = 1000`), then :Lazy sync.
+--   2. Below, replace apply_theme's body with that theme's setup() and
+--      `vim.cmd.colorscheme(...)`. Pass `transparent` to its transparency
+--      option so <leader>tt keeps working.
+--   3. Point M.lualine_theme() at the matching lualine theme name, or
+--      "auto" if the theme ships none.
 
 local M = {}
-
--- ── TRANSPARENCY ──────────────────────────────────────────────────
---
--- vscode.nvim implements transparency itself, so apply_theme() just passes
--- the flag down. strip_backgrounds() is the FALLBACK for a theme that does
--- not (darcula is one) -- kept because switching to such a theme otherwise
--- silently breaks <leader>tt.
---
--- Note what it is *not*: not the hand-written list of ~20 highlight groups
--- this config deleted once already, which drifted out of date the moment a
--- plugin was added. It COMPUTES the set instead -- every group whose
--- background currently equals Normal's background is, by definition, a group
--- painting the editor background, so clearing it is correct no matter which
--- plugin defined it.
-local function strip_backgrounds()
-  local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
-  local bg = normal and normal.bg
-  if not bg then
-    return
-  end
-  for name, hl in pairs(vim.api.nvim_get_hl(0, {})) do
-    -- Linked groups inherit from their target; re-setting them here would
-    -- break the link and freeze them at today's colours.
-    if hl.link == nil and hl.bg == bg then
-      hl.bg = nil
-      pcall(vim.api.nvim_set_hl, 0, name, hl)
-    end
-  end
-  normal.bg = nil
-  pcall(vim.api.nvim_set_hl, 0, "Normal", normal)
-end
 
 --- Build and activate the theme. `transparent` is read fresh each call
 --- because most themes bake the choice in at setup() time.
@@ -59,7 +21,6 @@ local function apply_theme(transparent)
     style = "dark",
     transparent = transparent,
     italic_comments = true,
-    disable_nvimtree_bg = true,
     -- BUG FIX (vscode.nvim's, worked around here). Its config.setup() does
     --
     --   if config.opts.transparent then
@@ -80,67 +41,6 @@ local function apply_theme(transparent)
     color_overrides = {},
   })
   vim.cmd.colorscheme("vscode")
-
-  -- ── IntelliJ Darcula ──────────────────────────────────────────────
-  -- Plugin: { "xiantang/darcula-dark.nvim", lazy = false }
-  -- lualine theme: "auto" (ships none of its own; "auto" derives one from
-  -- the active highlight groups, which tracks it correctly).
-  -- NOTE: no native transparency -- uncomment the strip_backgrounds() call
-  -- at the bottom of this function too.
-  --
-  -- require("darcula").setup({
-  --   opt = {
-  --     integrations = {
-  --       telescope = true,
-  --       lualine = true,
-  --       nvim_cmp = true,
-  --       dap_nvim = true,
-  --       lsp_semantics_token = true,
-  --     },
-  --   },
-  -- })
-  -- vim.cmd.colorscheme("darcula-dark")
-
-  -- ── Catppuccin Frappe ─────────────────────────────────────────────
-  -- Plugin: { "catppuccin/nvim", name = "catppuccin", lazy = false }
-  -- lualine theme: "catppuccin-frappe"
-  -- Has native transparency.
-  --
-  -- PERF NOTE if you re-enable it: leave auto_integrations = false. It
-  -- scans every installed plugin to guess which integrations to enable --
-  -- ~2.9 ms of eager startup to find exactly one thing the explicit list
-  -- did not already cover. TRADE-OFF: a newly installed plugin is not
-  -- themed automatically; add it to the list by hand.
-  --
-  -- require("catppuccin").setup({
-  --   flavour = "frappe",
-  --   background = { light = "latte", dark = "mocha" },
-  --   transparent_background = transparent,
-  --   float = { transparent = transparent, solid = false },
-  --   term_colors = true,
-  --   styles = { comments = { "italic" }, conditionals = { "italic" } },
-  --   auto_integrations = false,
-  --   integrations = {
-  --     rainbow_delimiters = true,
-  --     cmp = true,
-  --     gitsigns = true,
-  --     telescope = { enabled = true },
-  --     treesitter = true,
-  --     harpoon = true,
-  --     dap = true,
-  --     dap_ui = true,
-  --     indent_blankline = { enabled = true },
-  --     mason = true,
-  --     native_lsp = { enabled = true },
-  --     which_key = true,
-  --     notify = false,
-  --     mini = { enabled = true, indentscope_color = "" },
-  --   },
-  -- })
-  -- vim.cmd.colorscheme("catppuccin-frappe")
-
-  -- Only for a theme WITHOUT native transparency (e.g. darcula):
-  -- if transparent then strip_backgrounds() end
 end
 
 --- The lualine theme for the active colorscheme. Read by plugins.lua for the

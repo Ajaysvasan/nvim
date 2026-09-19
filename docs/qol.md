@@ -1,9 +1,8 @@
 # Quality-of-life plugins
 
 Four plugins configured inline in `plugins.lua` — small enough that they don't
-need their own module file. (`nvim-autopairs` and `nvim-emmet` used to be here;
-autopairs was [removed on purpose](#no-autopairs--removed-on-purpose), and emmet
-went with the rest of the web stack on this branch.)
+need their own module file. (glance.nvim is inline too; it is documented with
+the LSP keys that drive it, in [lsp.md](lsp.md#find-usages-glance).)
 
 ## lualine.nvim — statusline
 
@@ -12,36 +11,19 @@ Loads on `VeryLazy` (the statusline can appear a frame late).
 | Setting | Value | Why |
 |---|---|---|
 | `icons_enabled` | `vim.g.have_nerd_font ~= false` | Follows the global font flag — falls back to text-only on a machine without a patched font |
-| `theme` | `colorscheme.lualine_theme()` | Asks [colorscheme.lua](colorscheme.md) rather than hardcoding a name, so changing the theme is one edit in one place. *Historic bug:* it was once `"catppuccin"`, which is not a lualine theme (catppuccin ships one per flavour), so lualine silently fell back to `auto` and warned on every launch. |
-| `globalstatus` | `true` | **One statusline for the whole window**, not one per split. With a file tree and a DAP panel open, per-split statuslines waste three rows and repeat the same information. |
+| `theme` | `colorscheme.lualine_theme()` | Asks [colorscheme.lua](colorscheme.md) rather than hardcoding a name, so changing the theme is one edit in one place. A wrong name is not an error: lualine silently falls back to `auto` and warns on every launch. |
+| `globalstatus` | `true` | **One statusline for the whole window**, not one per split. With the DAP panels open, per-split statuslines waste rows and repeat the same information. |
 
 Everything else is lualine's default section layout.
 
 **Keymaps:** none.
-
-## No autopairs — removed on purpose
-
-`nvim-autopairs` used to live here and has been **removed**. Nothing in this
-config auto-inserts a closing bracket or quote any more.
-
-Auto-pairing fights you about as often as it helps: it guesses wrong when you
-are typing into existing code, and the "type the closing character to skip over
-it" behaviour silently swallows keystrokes, which is hard to notice and harder
-to undo. Typing both halves yourself is predictable.
-
-Verified after removal: typing `foo("bar` leaves exactly `foo("bar`.
-
-> The `!` HTML/JSX snippets in [cmp.md](cmp.md) still expand to matched tags —
-> that is an explicit expansion you ask for by name, not automatic pairing.
 
 ## indent-blankline.nvim (ibl)
 
 Loads on `BufReadPost` / `BufNewFile`, `main = "ibl"`, `opts = {}` (defaults).
 
 Draws a vertical guide at each indent level. Useful in deeply nested Java and
-JSX where the brace that closes a block is far off screen.
-
-Catppuccin themes it via the `indent_blankline` integration.
+C++ where the brace that closes a block is far off screen.
 
 **Keymaps:** none.
 

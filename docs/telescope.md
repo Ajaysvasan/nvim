@@ -166,9 +166,6 @@ gets a working Telescope (just with the slower Lua sorter). Configured with
 | `<leader>gs` | Git status |
 | `<leader>gS` | Git stash |
 
-> `<leader>gc` used to collide with `:LazyGitConfig`. lazygit is gone on this
-> branch, so `<leader>gc` is unambiguously git commits.
-
 ### Neovim internals
 
 | Key | Action |

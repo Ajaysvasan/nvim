@@ -70,7 +70,7 @@ local function report()
       { "init.lua", "lua" },
       { "main.py", "py" },
       { "Main.java", "java" },
-      { "App.tsx", "tsx" },
+      { "main.go", "go" },
       { "main.cpp", "cpp" },
     }) do
       local icon, hl = devicons.get_icon(t[1], t[2], { default = true })

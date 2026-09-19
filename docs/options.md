@@ -17,7 +17,7 @@ persistence.
 | `signcolumn` | `"yes"` | Always reserved. Without this the text shifts left/right every time a diagnostic or git sign appears. |
 | `scrolloff` | `8` | Keeps 8 lines of context above/below the cursor |
 | `sidescrolloff` | `8` | Same, horizontally |
-| `termguicolors` | `true` | 24-bit colour — required for Catppuccin to look correct |
+| `termguicolors` | `true` | 24-bit colour — required for the colorscheme to look correct |
 | `wrap` | `false` | Long lines scroll instead of wrapping |
 | `splitbelow` | `true` | New horizontal splits open below, matching how terminals are used here |
 | `splitright` | `true` | New vertical splits open right |
@@ -32,7 +32,7 @@ persistence.
 | `smartindent` | `true` | Language-aware auto-indent on new lines |
 
 > Per-language formatting is **not** driven by these — [conform](conform.md)
-> enforces 2-space indent for Lua and web files via `stylua` and `prettier`.
+> enforces 2-space indent for Lua via `stylua`, unless the project says otherwise.
 
 ## Search
 
@@ -70,7 +70,7 @@ end
 ```
 
 This one line is the **only** thing mason contributes at runtime. Everything it
-installs — language servers, `prettier`, `stylua`, `black`, debug adapters —
+installs — language servers, formatters, debug adapters —
 lands in that single bin directory, which has to be on `PATH` for conform,
 nvim-dap and `vim.lsp` to find it.
 
@@ -100,8 +100,11 @@ So the provider is pinned:
   `cache_enabled = 0`.
 - **Wayland** → `wl-copy` / `wl-paste`, with `*` mapped to the primary
   selection, `cache_enabled = 1`.
-- **X11 / anything else** → left to Neovim's auto-detection (install `xclip`
-  or `xsel`).
+- **X11** → `xsel`, else `xclip`, with the same flags Neovim's own provider
+  uses (`xsel --nodetach`, `xclip -quiet`), `cache_enabled = 1`. Checked
+  **after** Wayland, because XWayland sets `DISPLAY` too.
+- **Anything else** (SSH, tmux, no display) → left to Neovim's auto-detection,
+  which keeps OSC 52 and tmux working.
 
 `clipboard = "unnamedplus"` is then applied inside a `vim.schedule()`, **after**
 startup. Touching the `clipboard` option during init forces the provider to

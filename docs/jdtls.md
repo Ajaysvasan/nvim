@@ -22,7 +22,8 @@ never started on the first Java file you opened.
 ## JDK discovery
 
 **`$JAVA_HOME` is the source of truth.** Set it in your shell, restart Neovim,
-done.
+done. If it is unset or too old to run the server, a cheap fallback finds a
+JDK 21+ by itself — see [What actually happens](#what-actually-happens).
 
 This used to be the most complicated part of the file: it enumerated every JDK
 on the machine (`java_home -V`, a `java -version` spawn per candidate, plus
@@ -52,9 +53,35 @@ landing only in the workspace `.metadata/.log`.
 
 1. **Project runtime** — `$JAVA_HOME` is handed to Eclipse as the single
    `java.configuration.runtimes` entry (`JavaSE-17` → that path). It must have a
-   `bin/javac`; a JRE is not a valid Eclipse runtime.
-2. **Server JVM** — `$JAVA_HOME` if it is 21 or newer. Otherwise one call to
-   `/usr/libexec/java_home -v 21`, then `-v 21+` if that finds nothing.
+   `bin/javac`; a JRE is not a valid Eclipse runtime. If `$JAVA_HOME` is unset,
+   unreadable, a JRE, or a release newer than Eclipse has a definition for, the
+   JDK found in step 2 is named instead — Eclipse would fall back to its own JVM
+   anyway, and saying so explicitly is what makes `:JdtlsLog` readable.
+2. **Server JVM** — `$JAVA_HOME` if it is 21 or newer. Otherwise:
+   - **macOS** — `/usr/libexec/java_home -v 21`, then `-v 21+`. One subprocess,
+     and it covers Homebrew, Zulu, Temurin, Corretto, GraalVM and SDKMAN
+     wherever they install themselves.
+   - **everywhere else** — whatever `java` on `PATH` belongs to, plus
+     `/usr/lib/jvm/*`, `/usr/lib64/jvm/*`, `/usr/java/*`, `/opt/java/*`,
+     `~/.sdkman/candidates/java/*` and `~/.jdks/*`. Only directories with a
+     `bin/javac` count, they are deduped by **real** path (`/usr/lib/jvm` is
+     mostly symlinks — 16 entries are 3 JDKs on Fedora), and the **lowest**
+     version at or above 21 wins, because jdtls is built against that LTS.
+
+> ### Fixed bug: no Java at all on Linux
+>
+> Step 2's fallback used to be the macOS call *only*. `/usr/libexec/java_home`
+> does not exist on Linux, so with `$JAVA_HOME` unset jdtls never started —
+> *"jdtls needs JDK 21+ to run, and none was found"* — on a machine with a
+> perfectly good JDK 21 in `/usr/lib/jvm` and `java` on `PATH`.
+>
+> **Why the fallback is allowed to exist again**, given that the scanner it
+> replaced was deleted for costing ~760 ms: it never starts a JVM. Every JDK
+> ships its version in a plain text file at `<home>/release`
+> (`JAVA_VERSION="21.0.12.1"`), so comparing candidates is a handful of file
+> reads. Measured here: **0.0 ms**, against ~20 ms for a single `java -version`.
+> `java -version` is still the fallback-of-the-fallback, for a JDK assembled
+> without a `release` file.
 
 Running the server on a different JVM from the one your project targets is
 normal and fully supported — that split is exactly what the `runtimes` table
@@ -66,8 +93,11 @@ exists for, and it happens **silently**.
 > To see which JVM was chosen, run `:AjayDoctor` or
 > `:lua vim.print(require("ajay.jdtls").detected_jdks())`.
 
-> **On this machine:** `$JAVA_HOME` is Zulu 17, so kafka compiles against
-> `JavaSE-17`, and the server runs on Zulu 21. Verified end to end.
+> **Verified end to end** in four shapes: `$JAVA_HOME` unset (runs on the
+> JDK 21 found in `/usr/lib/jvm`, registers `JavaSE-21`), `$JAVA_HOME` set to
+> that JDK (identical), `$JAVA_HOME` set to a Java 17 JDK (project compiles
+> against `JavaSE-17`, server runs on 21), and `$JAVA_HOME` set to a JRE
+> (server runs on it, runtime falls back to the real JDK).
 
 ## Startup is quiet
 
@@ -248,8 +278,6 @@ here** — `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca` come from the shared
 `jdtls.setup_dap({ hotcodereplace = "auto" })` is called on attach, so
 [DAP](dap.md) keymaps work in Java too, with hot code replace during a session.
 
-> `<leader>jn` used to collide with a new-Java-file GUI module. That module is
-> gone on this branch, so `<leader>jn` is unambiguously "test nearest method".
 
 ## Commands
 
@@ -385,7 +413,6 @@ Measured on the same machine, same projects:
 | `pyright` | pytorch | **42 MB** | Fine, even with `diagnosticMode = "workspace"` |
 | `clangd` | linux kernel | **27–47 MB** | Fine |
 | `gopls` | — | — | Single process, no build daemon; nothing equivalent to spawn |
-| `lemminx` | — | — | The Mason build is a **native GraalVM binary**, not a JVM |
 
 **jdtls was the only offender**, and the JVM/daemon architecture is why: it is
 the only server here that starts a second JVM whose heap is configured by the

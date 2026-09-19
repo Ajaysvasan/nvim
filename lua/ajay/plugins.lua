@@ -60,26 +60,11 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- COLORSCHEME  (must be eager + high priority)
   -- ══════════════════════════════════════════════════════════════════
-  -- ONE theme is installed: VS Code Dark+. The registry and switcher
-  -- (:Theme, <leader>tc/<leader>tn) are gone -- see ajay.colorscheme.
-  --
-  -- TO SWITCH: uncomment a theme in `dependencies` below AND the matching
-  -- block in colorscheme.lua's apply_theme(), then :Lazy sync.
-  --
-  -- They belong in `dependencies` rather than as sibling specs, and that
-  -- is load order, not tidiness: lazy.nvim runs a plugin's dependencies
-  -- before the plugin itself, so the theme is on the runtimepath by the
-  -- time this `config` calls into colorscheme.lua. As a sibling spec it
-  -- would need a higher `priority` than this one, and `require(...)`
-  -- would otherwise fail on the very first startup after a switch.
+  -- ONE theme: VS Code Dark+. To switch, see the header of colorscheme.lua.
   {
     "Mofiqul/vscode.nvim",
     lazy = false,
     priority = 1000,
-    -- dependencies = {
-    --   { "catppuccin/nvim", name = "catppuccin", lazy = false },
-    --   { "xiantang/darcula-dark.nvim", lazy = false },
-    -- },
     config = function()
       setup_module("ajay.colorscheme")
       -- Registers :ToggleTransparency and <leader>tt. Registration only --
@@ -88,8 +73,8 @@ require("lazy").setup({
     end,
   },
 
-  -- No file-tree plugin on this branch. netrw (Neovim's built-in) is
-  -- re-enabled in the `performance.rtp` list at the bottom -- `:Ex`.
+  -- No file-tree plugin. netrw (Neovim's built-in) is the directory
+  -- browser -- `:Ex` -- which is why it is not in `disabled_plugins` below.
 
   -- ══════════════════════════════════════════════════════════════════
   -- TELESCOPE
@@ -209,9 +194,6 @@ require("lazy").setup({
     "mfussenegger/nvim-jdtls",
     ft = "java",
     config = function()
-      -- jdtls only. The IntelliJ-style "New Java Class" GUI
-      -- (java-creator.lua, ~1100 lines) and the Spring Boot runner
-      -- (springboot.lua) are gone on this branch -- see docs/README.md.
       setup_module("ajay.jdtls")
     end,
   },
@@ -341,6 +323,14 @@ require("lazy").setup({
   -- ══════════════════════════════════════════════════════════════════
   -- GIT
   -- ══════════════════════════════════════════════════════════════════
+  {
+    "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    config = function()
+      setup_module("ajay.gitsigns")
+    end,
+  },
+
   -- ══════════════════════════════════════════════════════════════════
   -- WHICH-KEY  (prefix hints)
   -- ══════════════════════════════════════════════════════════════════
@@ -352,14 +342,6 @@ require("lazy").setup({
     event = "VeryLazy",
     config = function()
       setup_module("ajay.whichkey")
-    end,
-  },
-
-  {
-    "lewis6991/gitsigns.nvim",
-    event = { "BufReadPre", "BufNewFile" },
-    config = function()
-      setup_module("ajay.gitsigns")
     end,
   },
 
@@ -469,18 +451,10 @@ require("lazy").setup({
     opts = {
       options = {
         icons_enabled = vim.g.have_nerd_font ~= false,
-        -- FIX: was `theme = "catppuccin"`, which is not a lualine theme.
-        -- catppuccin ships one file PER FLAVOUR --
-        -- lua/lualine/themes/catppuccin-{latte,frappe,macchiato,mocha}.lua
-        -- plus catppuccin-nvim -- and no plain `catppuccin`. lualine could
-        -- not resolve it, silently fell back to `auto`, and warned once per
-        -- launch: "lualine: There are some issues with your config. Run
-        -- :LualineNotices for details". Same class of bug as the
-        -- `colorscheme("catppuccin-nvim")` one fixed in colorscheme.lua.
-        --
-        -- Follows whichever theme is active. colorscheme.lua re-calls
-        -- lualine.setup() when you switch, so this is only the value used
-        -- on the very first draw.
+        -- Asked of colorscheme.lua so the theme name lives in one place.
+        -- A wrong name here is not an error: lualine silently falls back to
+        -- `auto` and warns "There are some issues with your config. Run
+        -- :LualineNotices" once per launch.
         theme = (function()
           local ok, cs = pcall(require, "ajay.colorscheme")
           return ok and cs.lualine_theme() or "auto"
@@ -489,15 +463,6 @@ require("lazy").setup({
       },
     },
   },
-  -- nvim-autopairs was here and is deliberately GONE. Auto-inserting the
-  -- closing bracket or quote fights you as often as it helps: it guesses
-  -- wrong when you are editing inside existing code, and the "type the
-  -- closing character to skip over it" behaviour silently swallows
-  -- keystrokes. Typing both halves yourself is predictable.
-  --
-  -- Nothing replaced it, and nothing else in this config auto-pairs. The
-  -- `!` HTML/JSX snippets in cmp.lua are explicit expansions you ask for
-  -- by name, which is a different thing.
   {
     "lukas-reineke/indent-blankline.nvim",
     event = { "BufReadPost", "BufNewFile" },
@@ -507,20 +472,6 @@ require("lazy").setup({
   {
     "numToStr/Comment.nvim",
     event = { "BufReadPost", "BufNewFile" },
-    dependencies = {
-      -- Makes commenting respect the language UNDER THE CURSOR, not just
-      -- the file's filetype. Required for JSX inside .tsx, <script> and
-      -- <style> inside .vue/.svelte/.html, etc.
-      {
-        "JoosepAlviste/nvim-ts-context-commentstring",
-        init = function()
-          -- Skips the plugin's own autocmd; Comment.nvim's pre_hook calls
-          -- it directly. Without this you pay for it twice.
-          vim.g.skip_ts_context_commentstring_module = true
-        end,
-        opts = { enable_autocmd = false },
-      },
-    },
     config = function()
       setup_module("ajay.comment")
     end,
@@ -532,17 +483,6 @@ require("lazy").setup({
       { "<leader>u", vim.cmd.UndotreeToggle, desc = "Toggle Undo Tree" },
     },
   },
-  -- No session plugin on this branch.
-  --
-  -- harpoon2 already persists its own list to
-  -- stdpath("data")/harpoon/<hash>.json, keyed by cwd -- which is the
-  -- working set you actually curate (add what you are editing, clear it
-  -- when done). persistence.nvim restored buffers/windows/cwd on top of
-  -- that and duplicated the only part that mattered.
-  --
-  -- If harpoon marks ever look "lost": it is the cwd. `nvim` started from
-  -- $HOME sees a different list than `nvim` started from the project root.
-
   -- ── IntelliJ-STYLE PEEK / FIND USAGES ─────────────────────────────
   -- `vim.lsp.buf.references()` dumps into the quickfix list: a flat list
   -- of file:line with no preview and no way to see the surrounding code
@@ -589,10 +529,7 @@ require("lazy").setup({
         "tohtml",
         "tutor",
         "zipPlugin",
-        -- netrwPlugin is NOT disabled here any more. neo-tree used to be
-        -- the file browser, so netrw was dead weight; with neo-tree gone
-        -- it is the only directory browser left, and it ships with
-        -- Neovim. `:Ex` opens the current file's directory.
+        -- netrwPlugin stays enabled: it is the directory browser (`:Ex`).
         "rplugin",
       },
     },

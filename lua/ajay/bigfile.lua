@@ -232,9 +232,8 @@ function M.setup()
     )
   end
 
-  -- ONE command instead of the old :BigFileOff / :BigFileStatus pair.
-  -- Bare `:BigFile` toggles, which is what you actually want when a file
-  -- you care about got caught by the gate.
+  -- One command. Bare `:BigFile` toggles, which is what you actually want
+  -- when a file you care about got caught by the gate.
   vim.api.nvim_create_user_command("BigFile", function(a)
     local buf = vim.api.nvim_get_current_buf()
     local arg = (a.args or ""):lower()

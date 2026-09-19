@@ -62,35 +62,16 @@ Both the completion menu and the documentation window use
 `<Tab>`/`<S-Tab>` are mapped in both insert (`i`) and select (`s`) mode so
 snippet placeholder jumping works while text is selected.
 
-> `[AI]` entries in this menu (accept with `<CR>`).
-
 ## Snippets
 
 `friendly-snippets` is lazy-loaded via
 `require("luasnip.loaders.from_vscode").lazy_load()` — that's the community
 snippet collection for every language.
 
-On top of that, this file defines its own:
-
-### HTML — `!`
-Full HTML5 boilerplate: doctype, `lang="en"`, charset, viewport meta, a
-`<title>` placeholder, and the cursor landing inside `<body>`.
+On top of that, this file defines one of its own:
 
 ### Java — `!`
 `public class <Name>` with a `main` method, cursor inside it.
-
-### JSX/TSX — registered for `javascriptreact`, `typescriptreact`, `javascript`, `typescript`
-
-| Trigger | Expands to |
-|---|---|
-| `div` | `<div>…</div>` |
-| `divc` | `<div className="…">…</div>` |
-| `span` | `<span>…</span>` |
-| `p` | `<p>…</p>` |
-| `h1` | `<h1>…</h1>` |
-| `h2` | `<h2>…</h2>` |
-| `button` | `<button>…</button>` |
-| `input` | `<input type="text" />` |
 
 ## Related
 

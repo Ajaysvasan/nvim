@@ -37,18 +37,6 @@ function M.setup()
     return
   end
 
-  -- Filetype-aware commentstring, including embedded languages.
-  -- This is the "comment based on the file I'm on" part: without it,
-  -- Comment.nvim uses vim.bo.commentstring, which for a .tsx file is
-  -- always `// %s` — so commenting a JSX block gives you broken syntax
-  -- instead of `{/* ... */}`. Same problem in .vue, .svelte, .html
-  -- with embedded <script>/<style>, and .astro.
-  local pre_hook = nil
-  local ctx_ok, ctx = pcall(require, "ts_context_commentstring.integrations.comment_nvim")
-  if ctx_ok then
-    pre_hook = ctx.create_pre_hook()
-  end
-
   comment.setup({
     padding = true,
     sticky = true,
@@ -61,7 +49,6 @@ function M.setup()
     extra = { above = "gcO", below = "gco", eol = "gcA" },
 
     mappings = { basic = true, extra = true },
-    pre_hook = pre_hook,
   })
 
   -- ── Ctrl+/ as a VS Code-style convenience ────────────────────────
@@ -99,22 +86,20 @@ function M.setup()
   })
 
   -- ── commentstring gap-fill ───────────────────────────────────────
-  -- Neovim's bundled ftplugins miss or get these wrong. Treesitter
-  -- context handles the embedded-language cases above; this handles
-  -- plain filetypes that just have no ftplugin.
+  -- Neovim's bundled ftplugins miss or get these wrong, or have no
+  -- ftplugin at all.
   local commentstrings = {
     c = "// %s", -- ships as /* %s */, which doesn't nest
     cpp = "// %s",
     cs = "// %s",
     java = "// %s",
-    json = "// %s", -- jsonc-style, valid in tsconfig/launch.json
+    json = "// %s", -- jsonc-style, valid in .vscode/launch.json
     jsonc = "// %s",
     sql = "-- %s",
     gitignore = "# %s",
     dockerfile = "# %s",
     conf = "# %s",
     kdl = "// %s",
-    prisma = "// %s",
     hyprlang = "# %s",
   }
 
